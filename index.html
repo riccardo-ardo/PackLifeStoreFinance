@@ -562,7 +562,18 @@ async function extractPdfText(file){
   for(let i=1;i<=pdf.numPages;i++){
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    text += content.items.map(it=>it.str).join(" ") + "\n";
+    let lastY = null, line = "";
+    content.items.forEach(item=>{
+      const y = item.transform[5];
+      if(lastY!==null && Math.abs(y-lastY)>2){
+        text += line.trim() + "\n";
+        line = "";
+      }
+      line += item.str + " ";
+      lastY = y;
+    });
+    if(line.trim()) text += line.trim() + "\n";
+    text += "\n";
   }
   return text;
 }
@@ -1000,7 +1011,7 @@ function renderOrders(){
     ${monthTabsHTML()}
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;">
       <button class="btn btn-secondary btn-sm" onclick="page='upload';render();">⇧ Upload Wix export</button>
-      <button class="btn btn-primary btn-sm" onclick="openOrderForm()">+ Add order</button>
+      <button class="btn btn-primary btn-sm" onclick="openOrderForm(null)">+ Add order</button>
     </div>
     <div class="table-wrap">
       <table>
@@ -1020,7 +1031,10 @@ function renderOrders(){
               <td class="num">${R(o.costToClient)}</td>
               <td class="num">${R(o.costSupplier)}</td>
               <td class="num">${R((o.costToClient||0)-(o.costSupplier||0))}</td>
-              <td class="row-actions"><button class="icon-btn" onclick="deleteRow('orders','${o.id}')">✕</button></td>
+              <td class="row-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openOrderForm('${o.id}')">Edit</button>
+                <button class="icon-btn" onclick="deleteRow('orders','${o.id}')">✕</button>
+              </td>
             </tr>`).join("") : `<tr><td colspan="12"><div class="empty-state"><div class="ic">▤</div>No orders logged for ${selectedMonth} yet</div></td></tr>`}
           ${ords.length?`<tr class="total-row"><td colspan="8">TOTAL</td><td class="num">${R(totalC)}</td><td class="num">${R(totalS)}</td><td class="num">${R(totalC-totalS)}</td><td></td></tr>`:""}
         </tbody>
@@ -1303,39 +1317,85 @@ async function handleWixPdfs(files){
   }
   if(!rows.length){
     toast("Couldn't read order details from those PDFs — add rows manually below");
-    rows = [{orderNo:"",date:"",customer:"",sku:"",product:"",price:0,coupon:""}];
+    rows = [{orderNo:"",date:"",customer:"",sku:"",product:"",price:0,coupon:"",paymentMethod:"EFT"}];
   } else {
     toast(`Pulled ${rows.length} line${rows.length===1?"":"s"} from ${files.length} PDF${files.length===1?"":"s"} — check before importing`);
   }
+  // Normalize dates up front so what's shown in the review table is exactly what will be saved —
+  // no silent "defaults to today" happening later at import time.
+  rows = rows.map(r=>({...r, date: (r.date && !isNaN(new Date(r.date))) ? r.date : new Date().toISOString()}));
   startPdfOrderReview(rows);
 }
+const MONTH_NAME_IDX = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function detectPaymentMethod(text){
+  const m = text.match(/Paid with\s*[:\-]?\s*([A-Za-z ]+)/i);
+  if(!m) return "EFT";
+  const p = m[1].toLowerCase();
+  if(p.includes("payflex")) return "Payflex";
+  if(p.includes("yoco")) return "Yoco";
+  if(p.includes("ikhok")) return "Ikhoka";
+  return "EFT";
+}
 function parseWixOrderPdfText(text){
-  const orderNoM = text.match(/order\s*#?\s*([A-Za-z0-9\-]{3,})/i);
-  const orderNo = orderNoM? orderNoM[1] : "";
-  const dateM = text.match(/([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/) || text.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/) || text.match(/(\d{4}-\d{2}-\d{2})/);
-  let date = "";
-  if(dateM){ const d = new Date(dateM[1]); if(!isNaN(d)) date = d.toISOString(); }
+  const lines = text.split("\n").map(l=>l.trim()).filter(Boolean);
+  const joined = lines.join("\n");
+
+  const orderM = joined.match(/Order\s*#\s*(\S+)/i);
+  const orderNo = orderM? orderM[1].replace(/[^A-Za-z0-9\-]/g,"") : "";
+
   let customer = "";
-  const custM = text.match(/(?:Bill(?:ing)? to|Ship(?:ping)? to|Customer)[:\s]+([A-Za-z][A-Za-z\s\-'.]{2,40})/i);
-  if(custM) customer = custM[1].trim().split(/\s{2,}|\n/)[0];
-  const couponM = text.match(/(?:coupon|discount code|promo code)[:\s]+([A-Za-z0-9\-]+)/i);
+  const orderLineIdx = lines.findIndex(l=>/^Order\s*#/i.test(l));
+  if(orderLineIdx>=0 && lines[orderLineIdx+1]) customer = lines[orderLineIdx+1].split(",")[0].trim();
+
+  let date = "";
+  const dateM = joined.match(/Placed on\s+(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})/i);
+  if(dateM){
+    const mi = MONTH_NAME_IDX[dateM[2].slice(0,3).toLowerCase()];
+    if(mi!==undefined) date = new Date(Date.UTC(parseInt(dateM[3]), mi, parseInt(dateM[1]))).toISOString();
+  }
+
+  const paymentMethod = detectPaymentMethod(joined);
+
+  const couponM = joined.match(/(?:Coupon|Discount code|Promo code)[:\s]+(\S+)/i);
   const coupon = couponM? couponM[1] : "";
-  const skuMatches = [...text.matchAll(/SKU[:\s]+([A-Za-z0-9\-\.]{3,})/gi)];
+
+  const shippingM = joined.match(/Shipping\s+R\s?([0-9][0-9,]*\.\d{2})/i);
+  const shipping = shippingM? parseFloat(shippingM[1].replace(/,/g,"")) : 0;
+
   const rows = [];
-  if(skuMatches.length){
-    skuMatches.forEach(m=>{
-      const sku = m[1];
-      const idx = m.index;
-      const windowText = text.slice(idx, idx+150);
-      const priceMatches = windowText.match(/R?\s?([0-9][0-9,]*\.\d{2})/g);
-      const price = priceMatches && priceMatches.length? parseFloat(priceMatches[priceMatches.length-1].replace(/[^0-9.]/g,"")) : 0;
-      const beforeSku = text.slice(Math.max(0,idx-60), idx);
-      const prodM = beforeSku.match(/([A-Z][A-Za-z0-9 \-']{4,50})\s*$/);
-      const product = prodM? prodM[1].trim() : "";
-      rows.push({orderNo, date, customer, sku, product, price, coupon});
+  lines.forEach((line,i)=>{
+    const skuM = line.match(/^SKU:\s*(\S+)/i);
+    if(!skuM) return;
+    const sku = skuM[1];
+    // Product name: nearest preceding line(s), skipping Size/Colour and stopping at header/customer lines
+    let product = "";
+    for(let j=i-1;j>=Math.max(0,i-3);j--){
+      const cand = lines[j];
+      if(/^(Size|Colou?r):/i.test(cand)) continue;
+      if(/^Order\s*#/i.test(cand) || /^Placed on/i.test(cand) || cand.includes("@")) break;
+      product = product? `${cand} ${product}` : cand;
+    }
+    // Price/qty line, usually a couple of lines after the SKU line: "R 509.15 x2 R 1,018.30"
+    let unitPrice=0, qty=1, lineTotal=0;
+    for(let j=i+1;j<Math.min(lines.length,i+5);j++){
+      const pm = lines[j].match(/^R\s?([0-9][0-9,]*\.\d{2})\s*(?:x\s?(\d+))?\s*(?:R\s?([0-9][0-9,]*\.\d{2}))?$/i);
+      if(pm){
+        unitPrice = parseFloat(pm[1].replace(/,/g,""));
+        qty = pm[2]? parseInt(pm[2]) : 1;
+        lineTotal = pm[3]? parseFloat(pm[3].replace(/,/g,"")) : unitPrice;
+        break;
+      }
+    }
+    rows.push({
+      orderNo, date, customer, sku,
+      product: product.trim() + (qty>1? ` ×${qty}` : ""),
+      price: lineTotal || unitPrice, coupon, paymentMethod
     });
-  } else {
-    rows.push({orderNo, date, customer, sku:"", product:"", price:0, coupon});
+  });
+  if(!rows.length){
+    rows.push({orderNo, date, customer, sku:"", product:"", price:0, coupon, paymentMethod});
+  } else if(shipping>0){
+    rows.push({orderNo, date, customer, sku:"", product:"Shipping", price:shipping, coupon:"", paymentMethod});
   }
   return rows;
 }
@@ -1352,7 +1412,7 @@ function renderPdfOrderReview(){
       <div class="banner" style="margin-bottom:10px;">Reading PDFs is best-effort — check every row against the actual receipt before importing, especially price and SKU.</div>
       <div class="table-wrap" style="margin:10px 0;">
         <table>
-          <thead><tr><th>Order No</th><th>Date</th><th>Customer</th><th>Product</th><th>SKU</th><th>Coupon</th><th class="num">Price</th><th></th></tr></thead>
+          <thead><tr><th>Order No</th><th>Date</th><th>Customer</th><th>Product</th><th>SKU</th><th>Coupon</th><th class="num">Price</th><th>Paid via</th><th></th></tr></thead>
           <tbody>
             ${pdfOrderRows.map((r,i)=>`
               <tr>
@@ -1363,13 +1423,14 @@ function renderPdfOrderReview(){
                 <td><input style="${inputStyle}width:110px;" value="${esc(r.sku)}" onchange="pdfOrderRows[${i}].sku=this.value"></td>
                 <td><input style="${inputStyle}width:90px;" value="${esc(r.coupon)}" onchange="pdfOrderRows[${i}].coupon=this.value"></td>
                 <td><input type="number" step="0.01" style="${inputStyle}width:90px;text-align:right;" value="${r.price}" onchange="pdfOrderRows[${i}].price=parseFloat(this.value)||0"></td>
+                <td><select style="${inputStyle}width:90px;" onchange="pdfOrderRows[${i}].paymentMethod=this.value">${PAYMENT_METHODS.map(p=>`<option ${r.paymentMethod===p?"selected":""}>${p}</option>`).join("")}</select></td>
                 <td><button class="icon-btn" onclick="pdfOrderRows.splice(${i},1);renderPdfOrderReview();">✕</button></td>
               </tr>`).join("")}
           </tbody>
         </table>
       </div>
       <div style="display:flex;justify-content:space-between;">
-        <button class="btn btn-secondary btn-sm" onclick="pdfOrderRows.push({orderNo:'',date:'',customer:'',sku:'',product:'',price:0,coupon:''});renderPdfOrderReview();">+ Add row</button>
+        <button class="btn btn-secondary btn-sm" onclick="pdfOrderRows.push({orderNo:'',date:new Date().toISOString(),customer:'',sku:'',product:'',price:0,coupon:'',paymentMethod:'EFT'});renderPdfOrderReview();">+ Add row</button>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-secondary btn-sm" onclick="document.getElementById('wixMapperHost').innerHTML=''">Cancel</button>
           <button class="btn btn-primary btn-sm" onclick="confirmPdfOrderImport()">Import ${pdfOrderRows.length} row(s) into ${selectedMonth}</button>
@@ -1382,17 +1443,19 @@ function confirmPdfOrderImport(){
   let count=0;
   pdfOrderRows.forEach(r=>{
     if(!r.product && !r.sku && !r.price) return;
+    const d = r.date && !isNaN(new Date(r.date)) ? r.date : new Date().toISOString();
+    const month = monthOf(d) || selectedMonth;
     DB.orders.push({
-      id:uid(), month:selectedMonth, orderNo:r.orderNo||"", date:r.date||new Date().toISOString(),
+      id:uid(), month, orderNo:r.orderNo||"", date:d,
       customer:r.customer||"", sku:r.sku||"", product:r.product||"", coupon:r.coupon||"",
-      paymentMethod:"EFT", costToClient:parseFloat(r.price)||0, costSupplier:0, supplier:"",
+      paymentMethod:r.paymentMethod||"EFT", costToClient:parseFloat(r.price)||0, costSupplier:0, supplier:"",
       source:"wix-pdf", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()
     });
     count++;
   });
-  DB.documents.push({id:uid(), name:`Wix PDF import — ${selectedMonth} (${count} rows)`, type:"import-log", month:selectedMonth, category:"Wix Export", note:`Imported ${count} order rows from PDF receipts`, addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
+  DB.documents.push({id:uid(), name:`Wix PDF import (${count} rows)`, type:"import-log", month:selectedMonth, category:"Wix Export", note:`Imported ${count} order rows from PDF receipts`, addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
   document.getElementById("wixMapperHost").innerHTML="";
-  toast(`Imported ${count} orders from PDF — double-check prices/SKUs, then add supplier cost`);
+  toast(`Imported ${count} orders from PDF, filed by their actual order date — double-check, then add supplier cost`);
   saveDB(true);
   page="orders"; render();
 }
@@ -1456,11 +1519,13 @@ function confirmWixImport(){
   let count=0;
   parsedRows.forEach(row=>{
     const price = parseFloat(String(row[mapping.price]||"0").replace(/[^0-9.\-]/g,""))||0;
+    const date = mapping.date? row[mapping.date] : new Date().toISOString();
+    const month = monthOf(date) || selectedMonth;
     const o = {
       id: uid(),
-      month: selectedMonth,
+      month,
       orderNo: mapping.orderNo? row[mapping.orderNo]:"",
-      date: mapping.date? row[mapping.date] : new Date().toISOString(),
+      date: date,
       customer: mapping.customer? row[mapping.customer]:"",
       sku: mapping.sku? row[mapping.sku]:"",
       product: mapping.product? row[mapping.product]:"",
@@ -1475,9 +1540,9 @@ function confirmWixImport(){
     };
     DB.orders.push(o); count++;
   });
-  DB.documents.push({id:uid(),name:`Wix export — ${selectedMonth} (${count} rows)`,type:"import-log",month:selectedMonth,category:"Wix Export",note:`Imported ${count} order rows`,addedBy:currentUser||"Unknown",addedAt:new Date().toISOString()});
+  DB.documents.push({id:uid(),name:`Wix export (${count} rows)`,type:"import-log",month:selectedMonth,category:"Wix Export",note:`Imported ${count} order rows`,addedBy:currentUser||"Unknown",addedAt:new Date().toISOString()});
   document.getElementById("wixMapperHost").innerHTML="";
-  toast(`Imported ${count} orders — supplier cost still needs adding per row`);
+  toast(`Imported ${count} orders, filed by their actual order date — supplier cost still needs adding per row`);
   saveDB(true);
   page="orders"; render();
 }
@@ -1636,42 +1701,49 @@ function openModal(html){
   document.body.appendChild(wrap);
 }
 
-function openOrderForm(){
+function openOrderForm(editId){
+  const o = editId? DB.orders.find(x=>x.id===editId) : null;
   openModal(`
-    <h3>Add order</h3><p class="sub">Manually log a single order line for ${selectedMonth}.</p>
+    <h3>${o? "Edit order":"Add order"}</h3><p class="sub">${o? "Update the details for this order — the month tab it appears under follows the date." : `Manually log a single order line for ${selectedMonth}.`}</p>
     <div class="field-row">
-      <div class="field"><label>Order no.</label><input id="f_orderNo"></div>
-      <div class="field"><label>Date</label><input id="f_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="field"><label>Order no.</label><input id="f_orderNo" value="${esc(o?.orderNo||'')}"></div>
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${o?.date && !isNaN(new Date(o.date)) ? new Date(o.date).toISOString().slice(0,10) : new Date().toISOString().slice(0,10)}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Customer</label><input id="f_customer"></div>
-      <div class="field"><label>Supplier / brand</label><input id="f_supplier"></div>
+      <div class="field"><label>Customer</label><input id="f_customer" value="${esc(o?.customer||'')}"></div>
+      <div class="field"><label>Supplier / brand</label><input id="f_supplier" value="${esc(o?.supplier||'')}"></div>
     </div>
-    <div class="field"><label>Product</label><input id="f_product"></div>
+    <div class="field"><label>Product</label><input id="f_product" value="${esc(o?.product||'')}"></div>
     <div class="field-row">
-      <div class="field"><label>SKU</label><input id="f_sku"></div>
-      <div class="field"><label>Coupon used</label><input id="f_coupon"></div>
+      <div class="field"><label>SKU</label><input id="f_sku" value="${esc(o?.sku||'')}"></div>
+      <div class="field"><label>Coupon used</label><input id="f_coupon" value="${esc(o?.coupon||'')}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Cost to client (R)</label><input id="f_costC" type="number" step="0.01"></div>
-      <div class="field"><label>Cost from supplier (R)</label><input id="f_costS" type="number" step="0.01"></div>
+      <div class="field"><label>Cost to client (R)</label><input id="f_costC" type="number" step="0.01" value="${o?.costToClient??''}"></div>
+      <div class="field"><label>Cost from supplier (R)</label><input id="f_costS" type="number" step="0.01" value="${o?.costSupplier??''}"></div>
     </div>
-    <div class="field"><label>Paid via</label><select id="f_payment">${PAYMENT_METHODS.map(p=>`<option>${p}</option>`).join("")}</select></div>
+    <div class="field"><label>Paid via</label><select id="f_payment">${PAYMENT_METHODS.map(p=>`<option ${o?.paymentMethod===p?"selected":""}>${p}</option>`).join("")}</select></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitOrderForm()">Save order</button>
+      <button class="btn btn-primary" onclick="submitOrderForm(${o? `'${o.id}'` : 'null'})">${o? "Save changes":"Save order"}</button>
     </div>
   `);
 }
-function submitOrderForm(){
-  const o = {
-    id:uid(), month:selectedMonth,
-    orderNo:val('f_orderNo'), date:val('f_date'), customer:val('f_customer'), supplier:val('f_supplier'),
+function submitOrderForm(editId){
+  const date = val('f_date');
+  const month = monthOf(date) || selectedMonth;
+  const fields = {
+    orderNo:val('f_orderNo'), date, customer:val('f_customer'), supplier:val('f_supplier'),
     product:val('f_product'), sku:val('f_sku'), coupon:val('f_coupon'), paymentMethod:val('f_payment')||"EFT",
-    costToClient:parseFloat(val('f_costC'))||0, costSupplier:parseFloat(val('f_costS'))||0,
-    source:"manual", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()
+    costToClient:parseFloat(val('f_costC'))||0, costSupplier:parseFloat(val('f_costS'))||0
   };
-  DB.orders.push(o); closeModal(); saveDB(true); render();
+  if(editId){
+    const existing = DB.orders.find(o=>o.id===editId);
+    if(existing) Object.assign(existing, fields, {month});
+  } else {
+    DB.orders.push({ id:uid(), month, ...fields, source:"manual", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString() });
+  }
+  closeModal(); saveDB(true); render();
 }
 
 function openTxForm(){
