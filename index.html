@@ -373,7 +373,7 @@ let syncState = "connecting"; // connecting | ok | offline | unconfigured
 const emptyDB = () => ({
   meta:{ categories:[...DEFAULT_CATEGORIES], adReservePct:0.10, partners:[...PARTNERS], updatedAt:null,
          centralCollector:"Riccardo", chrisFrontsSuppliers:true },
-  orders:[], transactions:[], documents:[], ticketSales:[], reviewQueue:[]
+  orders:[], transactions:[], documents:[], ticketSales:[], reviewQueue:[], skuMap:[]
 });
 
 /* ---------------- persistence layer ---------------- */
@@ -397,7 +397,7 @@ async function loadDB(){
     DB = json.record && json.record.meta ? json.record : emptyDB();
     // backfill any new fields for older bins
     DB.meta = Object.assign(emptyDB().meta, DB.meta||{});
-    ["orders","transactions","documents","ticketSales","reviewQueue"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
+    ["orders","transactions","documents","ticketSales","reviewQueue","skuMap"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
     syncState = "ok";
   }catch(e){
     console.error(e);
@@ -616,22 +616,52 @@ function skuIndex(){
   });
   return idx;
 }
-function applySupplierCosts(pairs){
+function findOrdersForSupplierSku(supplierSku){
+  const key = (supplierSku||"").trim().toLowerCase();
+  if(!key) return {orders:[], via:"none"};
   const idx = skuIndex();
+  // 1. exact match on our own SKU
+  if(idx[key]) return {orders:idx[key], via:"exact"};
+  // 2. explicit alias table (Supplier SKU -> our SKU), for when the codes don't share a prefix at all
+  const aliases = DB.skuMap.filter(m=>(m.supplierSku||"").trim().toLowerCase()===key);
+  if(aliases.length){
+    let matched = [];
+    aliases.forEach(a=>{
+      const ourKey = (a.ourSku||"").trim().toLowerCase();
+      if(idx[ourKey]) matched = matched.concat(idx[ourKey]);
+    });
+    if(matched.length) return {orders:matched, via:"alias"};
+  }
+  // 3. prefix fallback — e.g. supplier SKU "12345-01" vs our SKU "12345-01-L" (size/variant suffix)
+  if(key.length>=4){
+    const matched = DB.orders.filter(o=>o.sku && o.sku.trim().toLowerCase().startsWith(key) && o.sku.trim().toLowerCase()!==key);
+    if(matched.length) return {orders:matched, via:"prefix"};
+  }
+  return {orders:[], via:"none"};
+}
+function applySupplierCosts(pairs){
   const unmatched = [];
+  let prefixCount=0, aliasCount=0;
   pairs.forEach(p=>{
-    const k = (p.sku||"").trim().toLowerCase();
-    if(!k){ return; }
-    const candidates = idx[k];
-    if(candidates && candidates.length){
-      const target = candidates.find(o=>!o.costSupplier) || candidates[0];
+    if(!(p.sku||"").trim()) return;
+    const {orders, via} = findOrdersForSupplierSku(p.sku);
+    if(!orders.length){ unmatched.push(p); return; }
+    if(via==="exact"){
+      const target = orders.find(o=>!o.costSupplier) || orders[0];
       target.costSupplier = p.cost;
       if(p.supplierName) target.supplier = p.supplierName;
     } else {
-      unmatched.push(p);
+      // alias / prefix matches can hit several size/variant rows at once — apply to the ones still unresolved
+      const targets = orders.filter(o=>!o.costSupplier);
+      const toUpdate = targets.length? targets : orders;
+      toUpdate.forEach(o=>{
+        o.costSupplier = p.cost;
+        if(p.supplierName) o.supplier = p.supplierName;
+      });
+      if(via==="prefix") prefixCount += toUpdate.length; else aliasCount += toUpdate.length;
     }
   });
-  return unmatched;
+  return {unmatched, prefixCount, aliasCount};
 }
 function parsePastedPairs(text){
   return text.split(/\n+/).map(l=>l.trim()).filter(Boolean).map(l=>{
@@ -671,11 +701,20 @@ function matchPastedSkus(){
   const supplierName = val("skuSupplierName").trim();
   const pairs = parsePastedPairs(text).map(p=>({...p, supplierName}));
   if(!pairs.length){ toast("Nothing to match — paste SKU and cost first, one per line"); return; }
-  const unmatched = applySupplierCosts(pairs);
+  const {unmatched, prefixCount, aliasCount} = applySupplierCosts(pairs);
   attachSupplierDocIfRequested(pairs.length-unmatched.length, pairs.length, ()=>{
     saveDB(true); render();
-    toast(unmatched.length? `Matched ${pairs.length-unmatched.length} of ${pairs.length} — ${unmatched.length} SKU(s) not found in Orders` : `Matched all ${pairs.length} SKUs`);
+    toast(matchSummaryText(pairs.length, unmatched.length, prefixCount, aliasCount));
   });
+}
+function matchSummaryText(total, unmatchedCount, prefixCount, aliasCount){
+  const matched = total-unmatchedCount;
+  let msg = unmatchedCount? `Matched ${matched} of ${total} — ${unmatchedCount} SKU(s) not found in Orders` : `Matched all ${total} SKUs`;
+  const extras = [];
+  if(prefixCount) extras.push(`${prefixCount} via size/variant prefix`);
+  if(aliasCount) extras.push(`${aliasCount} via saved SKU mapping`);
+  if(extras.length) msg += ` (${extras.join(", ")})`;
+  return msg;
 }
 let supplierParsedRows=[], supplierMapping={};
 function handleSupplierFile(file){
@@ -729,11 +768,11 @@ function confirmSupplierImport(){
     cost: parseFloat(String(row[supplierMapping.cost]||"0").replace(/[^0-9.\-]/g,""))||0,
     supplierName: supplierMapping.supplier? row[supplierMapping.supplier] : val("skuSupplierName").trim()
   })).filter(p=>p.sku);
-  const unmatched = applySupplierCosts(pairs);
+  const {unmatched, prefixCount, aliasCount} = applySupplierCosts(pairs);
   attachSupplierDocIfRequested(pairs.length-unmatched.length, pairs.length, ()=>{
     document.getElementById("supplierMapperHost").innerHTML="";
     saveDB(true);
-    toast(unmatched.length? `Matched ${pairs.length-unmatched.length} of ${pairs.length} — ${unmatched.length} not found in Orders` : `Matched all ${pairs.length} SKUs`);
+    toast(matchSummaryText(pairs.length, unmatched.length, prefixCount, aliasCount));
     render();
   });
 }
@@ -814,8 +853,46 @@ function renderSuppliers(){
         <button class="btn btn-primary btn-sm" onclick="matchPastedSkus()">Match pasted SKUs</button>
       </div>
     </div>
+
+    <div class="section-head"><h2>SKU mapping</h2><span class="hint">When a supplier's SKU doesn't look like ours</span></div>
+    <div class="card card-lg">
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:0;">
+        Most of the time you won't need this: if PUMA's code is <b>12345-01</b> and your store's SKU for that same item is
+        <b>12345-01-L</b> (with a size added on the end), matching already handles that automatically — it applies PUMA's
+        cost to every one of your SKUs that starts with their code. Add a mapping here only when a supplier's code
+        doesn't share any part of yours at all, so PLS HQ knows the two refer to the same product.
+      </p>
+      <div class="table-wrap" style="margin-bottom:14px;">
+        <table>
+          <thead><tr><th>Supplier SKU</th><th>Your SKU</th><th>Supplier</th><th></th></tr></thead>
+          <tbody>
+            ${DB.skuMap.length? DB.skuMap.map(m=>`
+              <tr>
+                <td>${esc(m.supplierSku)}</td>
+                <td>${esc(m.ourSku)}</td>
+                <td>${esc(m.supplier||"—")}</td>
+                <td class="row-actions"><button class="icon-btn" onclick="deleteRow('skuMap','${m.id}')">✕</button></td>
+              </tr>`).join("") : `<tr><td colspan="4"><div class="empty-state" style="padding:20px;">No manual mappings yet — most suppliers won't need one</div></td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Supplier SKU</label><input id="map_supplierSku" placeholder="e.g. 12345-01"></div>
+        <div class="field"><label>Your SKU</label><input id="map_ourSku" placeholder="e.g. 12345-01-L"></div>
+        <div class="field"><label>Supplier (optional)</label><input id="map_supplier" placeholder="e.g. PUMA"></div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="addSkuMapping()">+ Add mapping</button>
+    </div>
   `;
   document.getElementById("supplierFile").onchange = e=>{ if(e.target.files[0]) handleSupplierFile(e.target.files[0]); };
+}
+function addSkuMapping(){
+  const supplierSku = val("map_supplierSku").trim();
+  const ourSku = val("map_ourSku").trim();
+  const supplier = val("map_supplier").trim();
+  if(!supplierSku || !ourSku){ toast("Fill in both SKUs first"); return; }
+  DB.skuMap.push({id:uid(), supplierSku, ourSku, supplier});
+  saveDB(true); render();
 }
 
 function pageHeader(title){ document.getElementById("pageTitle").textContent = title; }
@@ -1535,7 +1612,7 @@ function importBackup(file){
       if(!incoming.meta || !incoming.orders) throw new Error("Not a PLS HQ backup file");
       DB = incoming;
       DB.meta = Object.assign(emptyDB().meta, DB.meta||{});
-      ["orders","transactions","documents","ticketSales","reviewQueue"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
+      ["orders","transactions","documents","ticketSales","reviewQueue","skuMap"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
       saveDB(true);
       toast(`Imported ${DB.orders.length} orders, ${DB.transactions.length} transactions`);
       render();
