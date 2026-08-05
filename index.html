@@ -657,6 +657,7 @@ function applySupplierCosts(pairs){
   const unmatched = [];
   let prefixCount=0, aliasCount=0;
   const fillQty = (o,p)=>{ if(p.qty && (!o.qty || o.qty===1)) o.qty = p.qty; };
+  const fillOrderNo = (o,p)=>{ if(p.supplierOrderNo) o.supplierOrderNo = p.supplierOrderNo; };
   pairs.forEach(p=>{
     if(!(p.sku||"").trim()) return;
     const {orders, via} = findOrdersForSupplierSku(p.sku);
@@ -666,6 +667,7 @@ function applySupplierCosts(pairs){
       target.costSupplier = p.cost;
       if(p.supplierName) target.supplier = p.supplierName;
       fillQty(target, p);
+      fillOrderNo(target, p);
     } else {
       // alias / prefix matches can hit several size/variant rows at once — apply to the ones still unresolved
       const targets = orders.filter(o=>!o.costSupplier);
@@ -674,6 +676,7 @@ function applySupplierCosts(pairs){
         o.costSupplier = p.cost;
         if(p.supplierName) o.supplier = p.supplierName;
         fillQty(o, p);
+        fillOrderNo(o, p);
       });
       if(via==="prefix") prefixCount += toUpdate.length; else aliasCount += toUpdate.length;
     }
@@ -758,6 +761,7 @@ function startSupplierMapper(headers, rows, file){
     if(!supplierMapping.sku && /sku|article number/.test(l)) supplierMapping.sku=h;
     if(!supplierMapping.cost && /net price|unit price|cost|price|amount/.test(l)) supplierMapping.cost=h;
     if(!supplierMapping.qty && /qty|quantity/.test(l)) supplierMapping.qty=h;
+    if(!supplierMapping.orderNo && /order number|po number|order no/.test(l)) supplierMapping.orderNo=h;
     if(!supplierMapping.supplier && /(supplier|brand|vendor)/.test(l)) supplierMapping.supplier=h;
   });
   window._pendingSupplierFile = file;
@@ -771,6 +775,8 @@ function startSupplierMapper(headers, rows, file){
           <select onchange="supplierMapping.cost=this.value"><option value="">— not in file —</option>${headers.map(h=>`<option value="${esc(h)}" ${supplierMapping.cost===h?"selected":""}>${esc(h)}</option>`).join("")}</select></div>
         <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">Quantity (optional)</span>
           <select onchange="supplierMapping.qty=this.value; updateSupplierCostHint();"><option value="">— not in file / always 1 —</option>${headers.map(h=>`<option value="${esc(h)}" ${supplierMapping.qty===h?"selected":""}>${esc(h)}</option>`).join("")}</select></div>
+        <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">Supplier order no (optional)</span>
+          <select onchange="supplierMapping.orderNo=this.value"><option value="">— not in file —</option>${headers.map(h=>`<option value="${esc(h)}" ${supplierMapping.orderNo===h?"selected":""}>${esc(h)}</option>`).join("")}</select></div>
         <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">Supplier name</span>
           <select onchange="supplierMapping.supplier=this.value"><option value="">— not in file —</option>${headers.map(h=>`<option value="${esc(h)}" ${supplierMapping.supplier===h?"selected":""}>${esc(h)}</option>`).join("")}</select></div>
       </div>
@@ -801,6 +807,7 @@ function confirmSupplierImport(){
       cost: hasQtyCol? Math.round(unitOrTotal*qty*100)/100 : unitOrTotal,
       unitPrice: unitOrTotal,
       qty,
+      supplierOrderNo: supplierMapping.orderNo? String(row[supplierMapping.orderNo]||"").trim() : "",
       supplierName: supplierMapping.supplier? row[supplierMapping.supplier] : val("skuSupplierName").trim()
     };
   }).filter(p=>p.sku);
@@ -1074,13 +1081,14 @@ function renderOrders(){
     ${bulkBarHTML('orders')}
     <div class="table-wrap">
       <table>
-        <thead><tr><th style="width:36px;"><input type="checkbox" ${ords.length && ords.every(o=>selection.orders.has(o.id))? "checked":""} onchange='toggleSelectAll("orders", ${JSON.stringify(ords.map(o=>o.id))}, this.checked)'></th><th>Order No</th><th>Date</th><th>Customer</th><th>Product</th><th>SKU</th><th class="num">Qty</th><th class="num">Unit Price</th><th>Coupon</th><th>Supplier</th><th>Paid via</th>
+        <thead><tr><th style="width:36px;"><input type="checkbox" ${ords.length && ords.every(o=>selection.orders.has(o.id))? "checked":""} onchange='toggleSelectAll("orders", ${JSON.stringify(ords.map(o=>o.id))}, this.checked)'></th><th>Wix Order No</th><th>Supplier Order No</th><th>Date</th><th>Customer</th><th>Product</th><th>SKU</th><th class="num">Qty</th><th class="num">Unit Price</th><th>Coupon</th><th>Supplier</th><th>Paid via</th>
         <th class="num">Cost to Client</th><th class="num">Supplier Cost</th><th class="num">Gross Profit</th><th></th></tr></thead>
         <tbody>
           ${ords.length? ords.map(o=>`
             <tr>
               <td><input type="checkbox" ${selection.orders.has(o.id)?"checked":""} onchange="toggleSelect('orders','${o.id}', this.checked)"></td>
               <td>${esc(o.orderNo||"—")}</td>
+              <td>${esc(o.supplierOrderNo||"—")}</td>
               <td>${o.date? new Date(o.date).toLocaleDateString('en-ZA'):"—"}</td>
               <td>${esc(o.customer||"—")}</td>
               <td>${esc(o.product||"—")}</td>
@@ -1097,8 +1105,8 @@ function renderOrders(){
                 <button class="btn btn-secondary btn-sm" onclick="openOrderForm('${o.id}')">Edit</button>
                 <button class="icon-btn" onclick="deleteRow('orders','${o.id}')">✕</button>
               </td>
-            </tr>`).join("") : `<tr><td colspan="15"><div class="empty-state"><div class="ic">▤</div>No orders logged for ${selectedMonth} yet</div></td></tr>`}
-          ${ords.length?`<tr class="total-row"><td colspan="11">TOTAL</td><td class="num">${R(totalC)}</td><td class="num">${R(totalS)}</td><td class="num">${R(totalC-totalS)}</td><td></td></tr>`:""}
+            </tr>`).join("") : `<tr><td colspan="16"><div class="empty-state"><div class="ic">▤</div>No orders logged for ${selectedMonth} yet</div></td></tr>`}
+          ${ords.length?`<tr class="total-row"><td colspan="12">TOTAL</td><td class="num">${R(totalC)}</td><td class="num">${R(totalS)}</td><td class="num">${R(totalC-totalS)}</td><td></td></tr>`:""}
         </tbody>
       </table>
     </div>
@@ -1826,13 +1834,14 @@ function openOrderForm(editId){
   openModal(`
     <h3>${o? "Edit order":"Add order"}</h3><p class="sub">${o? "Update the details for this order — the month tab it appears under follows the date." : `Manually log a single order line for ${selectedMonth}.`}</p>
     <div class="field-row">
-      <div class="field"><label>Order no.</label><input id="f_orderNo" value="${esc(o?.orderNo||'')}"></div>
+      <div class="field"><label>Wix order no.</label><input id="f_orderNo" value="${esc(o?.orderNo||'')}"></div>
       <div class="field"><label>Date</label><input id="f_date" type="date" value="${o?.date && !isNaN(new Date(o.date)) ? new Date(o.date).toISOString().slice(0,10) : new Date().toISOString().slice(0,10)}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Customer</label><input id="f_customer" value="${esc(o?.customer||'')}"></div>
+      <div class="field"><label>Supplier order no. <span style="font-weight:400;color:var(--text-tertiary);">(PUMA's own order/PO number)</span></label><input id="f_supplierOrderNo" value="${esc(o?.supplierOrderNo||'')}"></div>
       <div class="field"><label>Supplier / brand</label><input id="f_supplier" value="${esc(o?.supplier||'')}"></div>
     </div>
+    <div class="field"><label>Customer</label><input id="f_customer" value="${esc(o?.customer||'')}"></div>
     <div class="field"><label>Product</label><input id="f_product" value="${esc(o?.product||'')}"></div>
     <div class="field-row">
       <div class="field"><label>SKU</label><input id="f_sku" value="${esc(o?.sku||'')}"></div>
@@ -1862,7 +1871,7 @@ function submitOrderForm(editId){
   const date = val('f_date');
   const month = monthOf(date) || selectedMonth;
   const fields = {
-    orderNo:val('f_orderNo'), date, customer:val('f_customer'), supplier:val('f_supplier'),
+    orderNo:val('f_orderNo'), supplierOrderNo:val('f_supplierOrderNo'), date, customer:val('f_customer'), supplier:val('f_supplier'),
     product:val('f_product'), sku:val('f_sku'), coupon:val('f_coupon'), paymentMethod:val('f_payment')||"EFT",
     qty:parseInt(val('f_qty'))||1, unitPrice:parseFloat(val('f_unitPrice'))||0,
     costToClient:parseFloat(val('f_costC'))||0, costSupplier:parseFloat(val('f_costS'))||0
