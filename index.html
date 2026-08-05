@@ -376,7 +376,7 @@ let syncState = "connecting"; // connecting | ok | offline | unconfigured
 const emptyDB = () => ({
   meta:{ categories:[...DEFAULT_CATEGORIES], adReservePct:0.10, partners:[...PARTNERS], updatedAt:null,
          centralCollector:"Riccardo", chrisFrontsSuppliers:true },
-  orders:[], transactions:[], documents:[], ticketSales:[], reviewQueue:[], skuMap:[]
+  orders:[], transactions:[], documents:[], ticketSales:[], reviewQueue:[], skuMap:[], payouts:[]
 });
 
 /* ---------------- persistence layer ---------------- */
@@ -400,7 +400,7 @@ async function loadDB(){
     DB = json.record && json.record.meta ? json.record : emptyDB();
     // backfill any new fields for older bins
     DB.meta = Object.assign(emptyDB().meta, DB.meta||{});
-    ["orders","transactions","documents","ticketSales","reviewQueue","skuMap"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
+    ["orders","transactions","documents","ticketSales","reviewQueue","skuMap","payouts"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
     syncState = "ok";
   }catch(e){
     console.error(e);
@@ -1137,7 +1137,10 @@ function renderTransactions(){
               <td>${esc(t.description||"—")}</td>
               <td class="num">${R(t.amount)}</td>
               <td>${esc(t.addedBy||"—")}</td>
-              <td class="row-actions"><button class="icon-btn" onclick="deleteRow('transactions','${t.id}')">✕</button></td>
+              <td class="row-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openTxForm('${t.id}')">Edit</button>
+                <button class="icon-btn" onclick="deleteRow('transactions','${t.id}')">✕</button>
+              </td>
             </tr>`).join("") : `<tr><td colspan="9"><div class="empty-state"><div class="ic">▥</div>No transactions logged for ${selectedMonth} yet</div></td></tr>`}
           ${txs.length?`<tr class="total-row"><td colspan="6">TOTAL EXPENSES</td><td class="num">${R(total)}</td><td colspan="2"></td></tr>`:""}
         </tbody>
@@ -1179,9 +1182,25 @@ function renderReview(){
   `;
 }
 
+function partnerLedger(){
+  const totals = {};
+  DB.meta.partners.forEach(p=>totals[p] = {earned:0, paid:0});
+  MONTHS.forEach(m=>{
+    const s = settlementForMonth(m);
+    DB.meta.partners.forEach(p=>{
+      totals[p].earned += (p==="Chris"? s.transferToChris : s.split[p]);
+    });
+  });
+  DB.payouts.forEach(po=>{
+    if(totals[po.partner]) totals[po.partner].paid += (+po.amount||0);
+  });
+  DB.meta.partners.forEach(p=>{ totals[p].balance = totals[p].earned - totals[p].paid; });
+  return totals;
+}
 function renderSettlement(){
   pageHeader("Payments & Settlement");
   const s = settlementForMonth(selectedMonth);
+  const ledger = partnerLedger();
   const collector = DB.meta.centralCollector;
   const chrisIsCentral = collector==="Chris";
   document.getElementById("content").innerHTML = `
@@ -1247,7 +1266,61 @@ function renderSettlement(){
         </div>`).join("")}
     </div>
     <p class="hint" style="margin-top:10px;">This assumes Chris is the one who pays suppliers (PUMA/others) directly and every order is tagged with how the customer paid. Tag payment method when logging or importing an order — untagged orders are treated as ${esc(collector)}-collected by default.</p>
+
+    <div class="section-head"><h2>Partner payouts</h2><span class="hint">Actual money transferred — separate from Orders and Transactions. Skip a month and it just carries forward.</span></div>
+    <div class="banner blue">This tracks what's <b>actually been paid</b> against what's been earned overall (all months combined), not just ${selectedMonth}. Log a payment whenever you actually transfer money to someone — the balance below updates automatically and never resets on its own.</div>
+    <div class="grid grid-3">
+      ${DB.meta.partners.map(p=>{
+        const t = ledger[p];
+        const owed = t.balance > 0.01, overpaid = t.balance < -0.01;
+        return `
+        <div class="card">
+          <div class="stat-label">${esc(p)} — balance</div>
+          <div class="stat-value ${owed?'neg':overpaid?'pos':''}">${R(Math.abs(t.balance))}</div>
+          <div class="stat-sub">${owed? `Still owed to ${esc(p)}` : overpaid? `${esc(p)} has been overpaid` : "All settled up"}</div>
+          <div class="stat-sub">Earned to date ${R(t.earned)} · Paid to date ${R(t.paid)}</div>
+        </div>`;
+      }).join("")}
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin:14px 0;">
+      <button class="btn btn-primary btn-sm" onclick="openPayoutForm()">+ Log a payment</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Paid to</th><th class="num">Amount</th><th>Note</th><th>Logged by</th><th></th></tr></thead>
+        <tbody>
+          ${DB.payouts.length? DB.payouts.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map(po=>`
+            <tr>
+              <td>${po.date? new Date(po.date).toLocaleDateString('en-ZA'):"—"}</td>
+              <td>${esc(po.partner)}</td>
+              <td class="num">${R(po.amount)}</td>
+              <td>${esc(po.note||"—")}</td>
+              <td>${esc(po.addedBy||"—")}</td>
+              <td class="row-actions"><button class="icon-btn" onclick="deleteRow('payouts','${po.id}')">✕</button></td>
+            </tr>`).join("") : `<tr><td colspan="6"><div class="empty-state">No payments logged yet</div></td></tr>`}
+        </tbody>
+      </table>
+    </div>
   `;
+}
+function openPayoutForm(){
+  openModal(`
+    <h3>Log a payment</h3><p class="sub">Record money you've actually transferred to a partner — this doesn't touch Orders or Transactions, just the running balance.</p>
+    <div class="field-row">
+      <div class="field"><label>Paid to</label><select id="f_partner">${DB.meta.partners.map(p=>`<option>${esc(p)}</option>`).join("")}</select></div>
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    </div>
+    <div class="field"><label>Amount (R)</label><input id="f_amount" type="number" step="0.01"></div>
+    <div class="field"><label>Note (optional)</label><input id="f_note" placeholder="e.g. July profit share, EFT"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitPayoutForm()">Save payment</button>
+    </div>
+  `);
+}
+function submitPayoutForm(){
+  DB.payouts.push({id:uid(), partner:val('f_partner'), date:val('f_date'), amount:parseFloat(val('f_amount'))||0, note:val('f_note'), addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
+  closeModal(); saveDB(true); render();
 }
 
 function renderDistribution(){
@@ -1805,7 +1878,7 @@ function importBackup(file){
       if(!incoming.meta || !incoming.orders) throw new Error("Not a PLS HQ backup file");
       DB = incoming;
       DB.meta = Object.assign(emptyDB().meta, DB.meta||{});
-      ["orders","transactions","documents","ticketSales","reviewQueue","skuMap"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
+      ["orders","transactions","documents","ticketSales","reviewQueue","skuMap","payouts"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
       saveDB(true);
       toast(`Imported ${DB.orders.length} orders, ${DB.transactions.length} transactions`);
       render();
@@ -1885,30 +1958,45 @@ function submitOrderForm(editId){
   closeModal(); saveDB(true); render();
 }
 
-function openTxForm(){
+function openTxForm(editId){
+  const t = editId? DB.transactions.find(x=>x.id===editId) : null;
   openModal(`
-    <h3>Add transaction</h3><p class="sub">Log an expense or income line for ${selectedMonth}.</p>
+    <h3>${t? "Edit transaction":"Add transaction"}</h3><p class="sub">${t? "Update the details for this transaction." : `Log an expense or income line for ${selectedMonth}.`}</p>
     <div class="field-row">
-      <div class="field"><label>Date</label><input id="f_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-      <div class="field"><label>Type</label><select id="f_type"><option>Expense</option><option>Income</option></select></div>
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${t?.date && !isNaN(new Date(t.date)) ? new Date(t.date).toISOString().slice(0,10) : new Date().toISOString().slice(0,10)}"></div>
+      <div class="field"><label>Type</label><select id="f_type"><option ${t?.type==="Expense"||!t?"selected":""}>Expense</option><option ${t?.type==="Income"?"selected":""}>Income</option></select></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Category</label>
-        <select id="f_category"><option value="">Not sure — send to review</option>${DB.meta.categories.map(c=>`<option>${esc(c)}</option>`).join("")}</select>
+        <select id="f_category"><option value="">Not sure — send to review</option>${DB.meta.categories.map(c=>`<option ${t?.category===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
       </div>
-      <div class="field"><label>Subcategory (vendor)</label><input id="f_subcategory" placeholder="e.g. Yoco, Meta Ads"></div>
+      <div class="field"><label>Subcategory (vendor)</label><input id="f_subcategory" value="${esc(t?.subcategory||'')}" placeholder="e.g. Yoco, Meta Ads"></div>
     </div>
-    <div class="field"><label>Description</label><input id="f_description"></div>
-    <div class="field"><label>Amount (R)</label><input id="f_amount" type="number" step="0.01"></div>
+    <div class="field"><label>Description</label><input id="f_description" value="${esc(t?.description||'')}"></div>
+    <div class="field"><label>Amount (R)</label><input id="f_amount" type="number" step="0.01" value="${t?.amount??''}"></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitTxForm()">Save transaction</button>
+      <button class="btn btn-primary" onclick="submitTxForm(${t? `'${t.id}'` : 'null'})">${t? "Save changes":"Save transaction"}</button>
     </div>
   `);
 }
-function submitTxForm(){
+function submitTxForm(editId){
   const cat = val('f_category');
   const base = { date:val('f_date'), type:val('f_type'), subcategory:val('f_subcategory'), description:val('f_description'), amount:parseFloat(val('f_amount'))||0 };
+  if(editId){
+    const existing = DB.transactions.find(t=>t.id===editId);
+    if(existing){
+      if(!cat){
+        DB.transactions = DB.transactions.filter(t=>t.id!==editId);
+        DB.reviewQueue.push({id:uid(), ...base, source:"manual"});
+        toast("Moved to Needs Review — no category chosen");
+      } else {
+        Object.assign(existing, base, {category:cat});
+      }
+    }
+    closeModal(); saveDB(true); render();
+    return;
+  }
   if(!cat){
     DB.reviewQueue.push({id:uid(), ...base, source:"manual"});
     toast("Sent to Needs Review — no category chosen");
