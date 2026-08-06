@@ -386,16 +386,35 @@ const jsonbinConfigured = () =>
   CONFIG.JSONBIN_API_KEY && !CONFIG.JSONBIN_API_KEY.startsWith("PASTE_");
 
 function migrateChrisOwnershipChange(){
-  // One-time transition: Chris stepped down as a shareholder. Old bins have partners
-  // including Chris and a 10% reserve — force the new structure exactly once, tracked
-  // with a flag so it never overwrites a deliberate later change in Settings.
-  if(DB.meta.chrisRemovedFromSplit) return;
-  const hadChris = DB.meta.partners && DB.meta.partners.includes("Chris");
-  DB.meta.partners = ["Riccardo","Anna"];
-  DB.meta.splitPercents = {Riccardo:0.40, Anna:0.40};
-  DB.meta.adReservePct = 0.20;
-  DB.meta.chrisRemovedFromSplit = true;
-  if(hadChris) saveDB(false);
+  // Chris stepped down as a shareholder. This runs on every load and self-heals — it never
+  // trusts a stored "already migrated" flag on its own, since a partial/older deploy could
+  // have set that flag without actually finishing the fix. Safe to run repeatedly: it's a
+  // no-op once the data already matches, and only writes back if something actually changed.
+  let changed = false;
+  if(!Array.isArray(DB.meta.partners) || !DB.meta.partners.length) DB.meta.partners = [...PARTNERS];
+  if(DB.meta.partners.includes("Chris")){
+    DB.meta.partners = DB.meta.partners.filter(p=>p!=="Chris");
+    if(!DB.meta.partners.length) DB.meta.partners = [...PARTNERS];
+    changed = true;
+  }
+  if(!DB.meta.splitPercents || typeof DB.meta.splitPercents!=="object") DB.meta.splitPercents = {};
+  Object.keys(DB.meta.splitPercents).forEach(k=>{
+    if(!DB.meta.partners.includes(k)){ delete DB.meta.splitPercents[k]; changed = true; }
+  });
+  DB.meta.partners.forEach(p=>{
+    if(DB.meta.splitPercents[p]==null){
+      DB.meta.splitPercents[p] = Math.round(((1-DB.meta.adReservePct)/DB.meta.partners.length)*100)/100;
+      changed = true;
+    }
+  });
+  // Old default reserve was 10% before this change — bump it once, tracked so a later
+  // deliberate edit in Settings never gets silently overwritten again.
+  if(!DB.meta.chrisRemovedFromSplit){
+    DB.meta.adReservePct = 0.20;
+    DB.meta.chrisRemovedFromSplit = true;
+    changed = true;
+  }
+  if(changed) saveDB(false);
 }
 async function loadDB(){
   if(!jsonbinConfigured()){
@@ -1831,6 +1850,14 @@ function renderSettings(){
         </div>
         <p class="hint" id="splitTotalHint" style="margin:0 0 12px;"></p>
         <button class="btn btn-primary btn-sm" onclick="saveSplitSettings()">Save</button>
+        <button class="btn btn-secondary btn-sm" onclick="migrateChrisOwnershipChange();render();toast('Re-checked — Chris removed from split if he was still in there');">Force-fix Chris/split now</button>
+      </div>
+      <div class="card card-lg" style="background:var(--surface-alt);">
+        <div class="stat-label" style="margin-bottom:12px;">Debug — current split data</div>
+        <p style="font-size:12.5px;color:var(--text-secondary);font-family:var(--font-mono);white-space:pre-wrap;">partners: ${JSON.stringify(DB.meta.partners)}
+splitPercents: ${JSON.stringify(DB.meta.splitPercents)}
+adReservePct: ${DB.meta.adReservePct}
+chrisRemovedFromSplit: ${!!DB.meta.chrisRemovedFromSplit}</p>
       </div>
 
       <div class="card card-lg">
