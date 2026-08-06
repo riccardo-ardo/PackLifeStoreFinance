@@ -362,7 +362,8 @@ if(window.pdfjsLib){
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DEFAULT_CATEGORIES = ["Advertising","Packaging","Printing","Courier","Domains","Software","Banking","Rent","Salaries/Wages","Misc"];
-const PARTNERS = ["Riccardo","Anna","Chris"];
+const PARTNERS = ["Riccardo","Anna"]; // profit-sharing shareholders only
+const TEAM = ["Riccardo","Anna","Chris"]; // everyone who can be tagged as having added an entry
 const PARTNER_COLORS = {Riccardo:"var(--ric)", Anna:"var(--anna)", Chris:"var(--chris)"};
 const PAYMENT_METHODS = ["EFT","Yoco","Ikhoka","Payflex"];
 const PAYFLEX_HOLDER = "Chris"; // Payflex payouts go straight to Chris, not the central account
@@ -374,8 +375,8 @@ let selectedMonth = MONTHS[new Date().getMonth()];
 let syncState = "connecting"; // connecting | ok | offline | unconfigured
 
 const emptyDB = () => ({
-  meta:{ categories:[...DEFAULT_CATEGORIES], adReservePct:0.10, partners:[...PARTNERS], updatedAt:null,
-         centralCollector:"Riccardo", chrisFrontsSuppliers:true },
+  meta:{ categories:[...DEFAULT_CATEGORIES], adReservePct:0.20, partners:[...PARTNERS], splitPercents:{Riccardo:0.40, Anna:0.40}, updatedAt:null,
+         centralCollector:"Riccardo", chrisFrontsSuppliers:true, docFolders:["General"] },
   orders:[], transactions:[], documents:[], ticketSales:[], reviewQueue:[], skuMap:[], payouts:[]
 });
 
@@ -384,6 +385,18 @@ const jsonbinConfigured = () =>
   CONFIG.JSONBIN_BIN_ID && !CONFIG.JSONBIN_BIN_ID.startsWith("PASTE_") &&
   CONFIG.JSONBIN_API_KEY && !CONFIG.JSONBIN_API_KEY.startsWith("PASTE_");
 
+function migrateChrisOwnershipChange(){
+  // One-time transition: Chris stepped down as a shareholder. Old bins have partners
+  // including Chris and a 10% reserve — force the new structure exactly once, tracked
+  // with a flag so it never overwrites a deliberate later change in Settings.
+  if(DB.meta.chrisRemovedFromSplit) return;
+  const hadChris = DB.meta.partners && DB.meta.partners.includes("Chris");
+  DB.meta.partners = ["Riccardo","Anna"];
+  DB.meta.splitPercents = {Riccardo:0.40, Anna:0.40};
+  DB.meta.adReservePct = 0.20;
+  DB.meta.chrisRemovedFromSplit = true;
+  if(hadChris) saveDB(false);
+}
 async function loadDB(){
   if(!jsonbinConfigured()){
     syncState = "unconfigured";
@@ -401,6 +414,7 @@ async function loadDB(){
     // backfill any new fields for older bins
     DB.meta = Object.assign(emptyDB().meta, DB.meta||{});
     ["orders","transactions","documents","ticketSales","reviewQueue","skuMap","payouts"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
+    migrateChrisOwnershipChange();
     syncState = "ok";
   }catch(e){
     console.error(e);
@@ -492,11 +506,17 @@ function monthFigures(m){
   const netProfit = grossProfit - totalExpenses;
   const adReserve = Math.max(netProfit,0) * DB.meta.adReservePct;
   const distributable = netProfit - adReserve;
-  const perPartner = distributable/3;
+  // Split between shareholders (Riccardo/Anna) by their configured percentage of distributable profit.
+  // Chris is no longer a shareholder — he isn't part of this split at all.
+  const split = {};
+  DB.meta.partners.forEach(p=>{
+    const pct = (DB.meta.splitPercents && DB.meta.splitPercents[p]!=null) ? DB.meta.splitPercents[p] : (1/DB.meta.partners.length);
+    split[p] = distributable * pct;
+  });
+  // Ticket sales (Pack Life Gym events) remain Chris's own separate income — not part of the PLS profit split.
   const ticketProfit = ticketsForMonth(m).reduce((s,t)=>s+((Number(t.costToClient)||0)-(Number(t.yocoFees)||0)),0);
-  const split = {Riccardo:perPartner, Anna:perPartner, Chris:perPartner+ticketProfit};
   const margin = revenue? netProfit/revenue : 0;
-  return {revenue,cogs,grossProfit,totalExpenses,byCategory,netProfit,adReserve,distributable,perPartner,ticketProfit,split,margin};
+  return {revenue,cogs,grossProfit,totalExpenses,byCategory,netProfit,adReserve,distributable,ticketProfit,split,margin};
 }
 function settlementForMonth(m){
   const ords = ordersForMonth(m);
@@ -507,19 +527,23 @@ function settlementForMonth(m){
   // Negative payflexNet = Payflex didn't cover what he paid suppliers — the business still owes him the gap.
   const payflexNet = payflexIn - supplierOwedToChris;
   const f = monthFigures(m);
-  // What actually needs to move from the central account to Chris this month:
-  // his profit share, minus whatever Payflex surplus he's already holding (or plus the shortfall).
-  const transferToChris = f.split.Chris - payflexNet;
+  // Chris has no profit share — this is purely a supplier-cost pass-through/settlement.
+  // If Chris is holding a Payflex surplus, he owes the business that amount (negative transfer = he owes).
+  // If Payflex fell short of what he paid suppliers, the business sends him the shortfall.
+  const transferToChris = -payflexNet;
   return { payflexIn, centralIn, supplierOwedToChris, payflexNet, transferToChris, ...f };
 }
 function yearFigures(){
-  const totals = {revenue:0,cogs:0,grossProfit:0,totalExpenses:0,netProfit:0,adReserve:0,distributable:0,ticketProfit:0,split:{Riccardo:0,Anna:0,Chris:0}};
+  const totals = {revenue:0,cogs:0,grossProfit:0,totalExpenses:0,netProfit:0,adReserve:0,distributable:0,ticketProfit:0,chrisSettlement:0,split:{}};
+  DB.meta.partners.forEach(p=>totals.split[p]=0);
   MONTHS.forEach(m=>{
     const f=monthFigures(m);
+    const s=settlementForMonth(m);
     totals.revenue+=f.revenue; totals.cogs+=f.cogs; totals.grossProfit+=f.grossProfit;
     totals.totalExpenses+=f.totalExpenses; totals.netProfit+=f.netProfit; totals.adReserve+=f.adReserve;
     totals.distributable+=f.distributable; totals.ticketProfit+=f.ticketProfit;
-    totals.split.Riccardo+=f.split.Riccardo; totals.split.Anna+=f.split.Anna; totals.split.Chris+=f.split.Chris;
+    totals.chrisSettlement+=s.transferToChris;
+    DB.meta.partners.forEach(p=>{ totals.split[p]+=f.split[p]||0; });
   });
   totals.margin = totals.revenue? totals.netProfit/totals.revenue : 0;
   return totals;
@@ -534,14 +558,9 @@ function refreshReviewBadge(){
    RENDERERS
    ============================================================ */
 function renderRings(split, size=150){
-  const total = Math.max(split.Riccardo+split.Anna+split.Chris, 0.0001);
-  const parts = [
-    {name:"Riccardo", val:Math.max(split.Riccardo,0), color:"var(--ric)"},
-    {name:"Anna", val:Math.max(split.Anna,0), color:"var(--anna)"},
-    {name:"Chris", val:Math.max(split.Chris,0), color:"var(--chris)"}
-  ];
+  const parts = DB.meta.partners.map(p=>({name:p, val:Math.max(split[p]||0,0), color:PARTNER_COLORS[p]||"var(--text)"}));
   const max = Math.max(...parts.map(p=>p.val), 1);
-  const r0=size*0.46, stroke=size*0.085, gap=stroke*1.35;
+  const r0=size*0.46, stroke=size*0.1, gap=stroke*1.35;
   let svg = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
   parts.forEach((p,i)=>{
     const r = r0 - i*gap;
@@ -950,6 +969,7 @@ function trendChart(){
 function renderDashboard(){
   pageHeader("Dashboard");
   const f = monthFigures(selectedMonth);
+  const s = settlementForMonth(selectedMonth);
   const y = yearFigures();
   const recent = [
     ...DB.orders.map(o=>({t:o.date,k:"Order",d:`${o.product||"Item"} · ${o.supplier||""}`,a:o.costToClient,who:o.addedBy})),
@@ -981,18 +1001,22 @@ function renderDashboard(){
       </div>
     </div>
 
-    <div class="section-head"><h2>Profit split — ${selectedMonth}</h2><span class="hint">Equal thirds after the 10% marketing reserve · Chris also gets gym ticket profit on top</span></div>
+    <div class="section-head"><h2>Profit split — ${selectedMonth}</h2><span class="hint">${DB.meta.partners.map(p=>`${p} ${pct(DB.meta.splitPercents[p]||0)}`).join(" · ")} after a ${pct(DB.meta.adReservePct)} marketing reserve</span></div>
     <div class="card card-lg">
       <div class="rings-wrap">
         ${renderRings(f.split,150)}
         <div class="rings-legend">
-          ${["Riccardo","Anna","Chris"].map(p=>`
+          ${DB.meta.partners.map(p=>`
             <div class="legend-row">
               <span class="legend-dot" style="background:${PARTNER_COLORS[p]}"></span>
-              <span class="legend-name">${p}${p==="Chris" && f.ticketProfit? ` <span class="hint" style="font-weight:400">(+ ${R(f.ticketProfit)} tickets)</span>`:""}</span>
+              <span class="legend-name">${p}</span>
               <span class="legend-amt">${R(f.split[p])}</span>
             </div>`).join("")}
         </div>
+      </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft);display:flex;justify-content:space-between;align-items:center;font-size:13px;">
+        <span style="color:var(--text-secondary);">Chris — not a shareholder; supplier/Payflex settlement only${f.ticketProfit? ` · gym tickets ${R(f.ticketProfit)} (his own income)`:""}</span>
+        <b style="font-family:var(--font-mono);color:${s.transferToChris<0?'var(--red)':'var(--text)'}">${s.transferToChris<0? `owes ${R(Math.abs(s.transferToChris))}` : R(s.transferToChris)}</b>
       </div>
     </div>
 
@@ -1006,7 +1030,7 @@ function renderDashboard(){
           <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft);"><span>Revenue</span><b class="stat" style="font-family:var(--font-mono)">${R(y.revenue)}</b></div>
           <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft);"><span>Expenses (COGS + overheads)</span><b style="font-family:var(--font-mono)">${R(y.cogs+y.totalExpenses)}</b></div>
           <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft);"><span>Net profit</span><b style="font-family:var(--font-mono)">${R(y.netProfit)}</b></div>
-          <div style="display:flex;justify-content:space-between;padding:6px 0;"><span>Distributed to partners</span><b style="font-family:var(--font-mono)">${R(y.distributable+y.ticketProfit)}</b></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;"><span>Distributed to shareholders (Anna + Riccardo)</span><b style="font-family:var(--font-mono)">${R(y.distributable)}</b></div>
         </div>
       </div>
       <div>
@@ -1184,17 +1208,17 @@ function renderReview(){
 
 function partnerLedger(){
   const totals = {};
-  DB.meta.partners.forEach(p=>totals[p] = {earned:0, paid:0});
+  const names = [...DB.meta.partners, "Chris"];
+  names.forEach(p=>totals[p] = {earned:0, paid:0});
   MONTHS.forEach(m=>{
     const s = settlementForMonth(m);
-    DB.meta.partners.forEach(p=>{
-      totals[p].earned += (p==="Chris"? s.transferToChris : s.split[p]);
-    });
+    DB.meta.partners.forEach(p=>{ totals[p].earned += (s.split[p]||0); });
+    totals["Chris"].earned += s.transferToChris;
   });
   DB.payouts.forEach(po=>{
     if(totals[po.partner]) totals[po.partner].paid += (+po.amount||0);
   });
-  DB.meta.partners.forEach(p=>{ totals[p].balance = totals[p].earned - totals[p].paid; });
+  names.forEach(p=>{ totals[p].balance = totals[p].earned - totals[p].paid; });
   return totals;
 }
 function renderSettlement(){
@@ -1202,7 +1226,6 @@ function renderSettlement(){
   const s = settlementForMonth(selectedMonth);
   const ledger = partnerLedger();
   const collector = DB.meta.centralCollector;
-  const chrisIsCentral = collector==="Chris";
   document.getElementById("content").innerHTML = `
     ${monthTabsHTML()}
     <div class="banner blue">
@@ -1240,29 +1263,29 @@ function renderSettlement(){
       </div>
     </div>
 
-    <div class="section-head"><h2>Step 2 — This month's profit split</h2><span class="hint">Same numbers as the Distribution page</span></div>
+    <div class="section-head"><h2>Step 2 — This month's profit split</h2><span class="hint">Same numbers as the Distribution page — Chris isn't part of this, see Step 1</span></div>
     <div class="grid grid-3">
       <div class="card"><div class="stat-label">Net profit</div><div class="stat-value">${R(s.netProfit)}</div></div>
-      <div class="card"><div class="stat-label">Marketing reserve (10%)</div><div class="stat-value">${R(s.adReserve)}</div></div>
-      <div class="card"><div class="stat-label">Each partner's third</div><div class="stat-value">${R(s.perPartner)}</div></div>
+      <div class="card"><div class="stat-label">Marketing reserve (${pct(DB.meta.adReservePct)})</div><div class="stat-value">${R(s.adReserve)}</div></div>
+      <div class="card"><div class="stat-label">Distributable</div><div class="stat-value">${R(s.distributable)}</div></div>
     </div>
 
     <div class="section-head"><h2>Step 3 — Who actually gets paid, and how</h2><span class="hint">${selectedMonth} payout instructions</span></div>
     <div class="card card-lg">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border-soft);">
-        <div><b>Set aside for marketing</b><div class="hint" style="font-size:12px;">Stays in ${esc(collector)}'s account, 10% reserve</div></div>
+        <div><b>Set aside for marketing</b><div class="hint" style="font-size:12px;">Stays in ${esc(collector)}'s account, ${pct(DB.meta.adReservePct)} reserve</div></div>
         <b style="font-family:var(--font-mono);font-size:16px;">${R(s.adReserve)}</b>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border-soft);">
-        <div><b>${chrisIsCentral? "Chris already holds his share" : `Transfer to Chris`}</b>
-          <div class="hint" style="font-size:12px;">His third (${R(s.perPartner)}) ${s.ticketProfit?`+ ticket profit (${R(s.ticketProfit)}) `:""}${s.payflexNet>=0? `− Payflex surplus already in hand (${R(s.payflexNet)})` : `+ extra to cover the supplier shortfall (${R(Math.abs(s.payflexNet))})`}</div>
+        <div><b>${s.transferToChris<0? "Chris owes the business" : "Send Chris"}</b>
+          <div class="hint" style="font-size:12px;">Not a profit share — purely covering the supplier/Payflex gap this month ${DB.meta.chrisFrontsSuppliers?`(suppliers owed: ${R(s.supplierOwedToChris)}, Payflex held: ${R(s.payflexIn)})`:""}</div>
         </div>
-        <b style="font-family:var(--font-mono);font-size:16px;color:${s.transferToChris<0?'var(--red)':'var(--text)'}">${s.transferToChris<0? `Chris owes ${R(Math.abs(s.transferToChris))}` : R(s.transferToChris)}</b>
+        <b style="font-family:var(--font-mono);font-size:16px;color:${s.transferToChris<0?'var(--red)':'var(--text)'}">${s.transferToChris<0? `owes ${R(Math.abs(s.transferToChris))}` : R(s.transferToChris)}</b>
       </div>
-      ${DB.meta.partners.filter(p=>p!=="Chris").map(p=>`
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;${p===DB.meta.partners.filter(x=>x!=='Chris').slice(-1)[0]?'':'border-bottom:1px solid var(--border-soft);'}">
-          <div><b>${p===collector? `${esc(p)} keeps their share in the account` : `Pay ${esc(p)}`}</b><div class="hint" style="font-size:12px;">Equal third</div></div>
-          <b style="font-family:var(--font-mono);font-size:16px;">${R(s.perPartner)}</b>
+      ${DB.meta.partners.map((p,i)=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;${i===DB.meta.partners.length-1?'':'border-bottom:1px solid var(--border-soft);'}">
+          <div><b>${p===collector? `${esc(p)} keeps their share in the account` : `Pay ${esc(p)}`}</b><div class="hint" style="font-size:12px;">${pct(DB.meta.splitPercents[p]||0)} of distributable</div></div>
+          <b style="font-family:var(--font-mono);font-size:16px;">${R(s.split[p])}</b>
         </div>`).join("")}
     </div>
     <p class="hint" style="margin-top:10px;">This assumes Chris is the one who pays suppliers (PUMA/others) directly and every order is tagged with how the customer paid. Tag payment method when logging or importing an order — untagged orders are treated as ${esc(collector)}-collected by default.</p>
@@ -1270,15 +1293,16 @@ function renderSettlement(){
     <div class="section-head"><h2>Partner payouts</h2><span class="hint">Actual money transferred — separate from Orders and Transactions. Skip a month and it just carries forward.</span></div>
     <div class="banner blue">This tracks what's <b>actually been paid</b> against what's been earned overall (all months combined), not just ${selectedMonth}. Log a payment whenever you actually transfer money to someone — the balance below updates automatically and never resets on its own.</div>
     <div class="grid grid-3">
-      ${DB.meta.partners.map(p=>{
+      ${[...DB.meta.partners, "Chris"].map(p=>{
         const t = ledger[p];
         const owed = t.balance > 0.01, overpaid = t.balance < -0.01;
+        const isChris = p==="Chris";
         return `
         <div class="card">
-          <div class="stat-label">${esc(p)} — balance</div>
+          <div class="stat-label">${esc(p)} — ${isChris? "settlement balance":"balance"}</div>
           <div class="stat-value ${owed?'neg':overpaid?'pos':''}">${R(Math.abs(t.balance))}</div>
-          <div class="stat-sub">${owed? `Still owed to ${esc(p)}` : overpaid? `${esc(p)} has been overpaid` : "All settled up"}</div>
-          <div class="stat-sub">Earned to date ${R(t.earned)} · Paid to date ${R(t.paid)}</div>
+          <div class="stat-sub">${owed? `Still owed to ${esc(p)}` : overpaid? `${esc(p)} owes the business` : "All settled up"}</div>
+          <div class="stat-sub">${isChris? "Supplier/Payflex settlement" : "Profit share"} to date ${R(t.earned)} · Paid to date ${R(t.paid)}</div>
         </div>`;
       }).join("")}
     </div>
@@ -1305,9 +1329,9 @@ function renderSettlement(){
 }
 function openPayoutForm(){
   openModal(`
-    <h3>Log a payment</h3><p class="sub">Record money you've actually transferred to a partner — this doesn't touch Orders or Transactions, just the running balance.</p>
+    <h3>Log a payment</h3><p class="sub">Record money you've actually transferred to someone — this doesn't touch Orders or Transactions, just the running balance. If Chris is paying money back to the business (e.g. handing over a Payflex surplus), enter the amount as negative.</p>
     <div class="field-row">
-      <div class="field"><label>Paid to</label><select id="f_partner">${DB.meta.partners.map(p=>`<option>${esc(p)}</option>`).join("")}</select></div>
+      <div class="field"><label>Paid to</label><select id="f_partner">${[...DB.meta.partners, "Chris"].map(p=>`<option>${esc(p)}</option>`).join("")}</select></div>
       <div class="field"><label>Date</label><input id="f_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
     </div>
     <div class="field"><label>Amount (R)</label><input id="f_amount" type="number" step="0.01"></div>
@@ -1329,35 +1353,37 @@ function renderDistribution(){
   document.getElementById("content").innerHTML = `
     <div class="grid grid-3">
       <div class="card"><div class="stat-label">Full-year net profit</div><div class="stat-value">${R(y.netProfit)}</div></div>
-      <div class="card"><div class="stat-label">Marketing reserve (10%)</div><div class="stat-value">${R(y.adReserve)}</div></div>
-      <div class="card"><div class="stat-label">Distributed to partners</div><div class="stat-value">${R(y.distributable+y.ticketProfit)}</div></div>
+      <div class="card"><div class="stat-label">Marketing reserve (${pct(DB.meta.adReservePct)})</div><div class="stat-value">${R(y.adReserve)}</div></div>
+      <div class="card"><div class="stat-label">Distributed to shareholders</div><div class="stat-value">${R(y.distributable)}</div></div>
     </div>
     <div class="section-head"><h2>How the split works</h2></div>
-    <div class="banner blue">Each month: <b>Net Profit</b> = Gross Profit − Expenses. <b>10%</b> is set aside for marketing. What's left is split <b>equally three ways</b>. Chris additionally keeps 100% of profit from Pack Life Gym's SOMA ticket sales, added on top of his third.</div>
+    <div class="banner blue">Each month: <b>Net Profit</b> = Gross Profit − Expenses. <b>${pct(DB.meta.adReservePct)}</b> is set aside for marketing. What's left splits between the two shareholders — ${DB.meta.partners.map(p=>`<b>${esc(p)} ${pct(DB.meta.splitPercents[p]||0)}</b>`).join(" and ")}. Chris stepped down as a shareholder — he's no longer part of this split. He still pays suppliers directly and collects Payflex, tracked as its own running settlement below (and on Payments & Settlement).</div>
 
     <div class="table-wrap" style="margin-top:8px;">
       <table>
-        <thead><tr><th>Month</th><th class="num">Net Profit</th><th class="num">Marketing (10%)</th><th class="num">Distributable</th><th class="num">Riccardo</th><th class="num">Anna</th><th class="num">Chris</th></tr></thead>
+        <thead><tr><th>Month</th><th class="num">Net Profit</th><th class="num">Marketing</th><th class="num">Distributable</th>${DB.meta.partners.map(p=>`<th class="num">${esc(p)}</th>`).join("")}<th class="num">Chris (settlement)</th></tr></thead>
         <tbody>
-          ${MONTHS.map(m=>{ const f=monthFigures(m); return `
+          ${MONTHS.map(m=>{ const f=monthFigures(m); const s=settlementForMonth(m); return `
             <tr>
               <td>${m}</td>
               <td class="num">${R(f.netProfit)}</td>
               <td class="num">${R(f.adReserve)}</td>
               <td class="num">${R(f.distributable)}</td>
-              <td class="num">${R(f.split.Riccardo)}</td>
-              <td class="num">${R(f.split.Anna)}</td>
-              <td class="num">${R(f.split.Chris)}</td>
+              ${DB.meta.partners.map(p=>`<td class="num">${R(f.split[p])}</td>`).join("")}
+              <td class="num" style="color:${s.transferToChris<0?'var(--red)':'inherit'}">${s.transferToChris<0? `(${R(Math.abs(s.transferToChris))})` : R(s.transferToChris)}</td>
             </tr>`;}).join("")}
           <tr class="total-row">
             <td>FULL YEAR</td><td class="num">${R(y.netProfit)}</td><td class="num">${R(y.adReserve)}</td>
-            <td class="num">${R(y.distributable)}</td><td class="num">${R(y.split.Riccardo)}</td><td class="num">${R(y.split.Anna)}</td><td class="num">${R(y.split.Chris)}</td>
+            <td class="num">${R(y.distributable)}</td>
+            ${DB.meta.partners.map(p=>`<td class="num">${R(y.split[p])}</td>`).join("")}
+            <td class="num" style="color:${y.chrisSettlement<0?'var(--red)':'inherit'}">${y.chrisSettlement<0? `(${R(Math.abs(y.chrisSettlement))})` : R(y.chrisSettlement)}</td>
           </tr>
         </tbody>
       </table>
     </div>
+    <p class="hint" style="margin-top:8px;">Chris's column is money still owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round. Full detail on Payments & Settlement.</p>
 
-    <div class="section-head"><h2>Gym ticket sales — Chris's top-up</h2><span class="hint">Pack Life Gym SOMA Inner Balance passes</span></div>
+    <div class="section-head"><h2>Gym ticket sales — Chris's own income</h2><span class="hint">Pack Life Gym SOMA Inner Balance passes — not part of the PLS profit split</span></div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
       <button class="btn btn-primary btn-sm" onclick="openTicketForm()">+ Add ticket sale</button>
     </div>
@@ -1749,27 +1775,44 @@ function confirmWixImport(){
 }
 
 /* ---------- Document Vault ---------- */
+let selectedFolder = "All";
 function renderVault(){
   pageHeader("Document Vault");
-  const docs = DB.documents.slice().sort((a,b)=>new Date(b.addedAt)-new Date(a.addedAt));
+  const allDocs = DB.documents.slice().sort((a,b)=>new Date(b.addedAt)-new Date(a.addedAt));
+  const usedFolders = [...new Set(allDocs.map(d=>d.folder||"General"))];
+  const folders = [...new Set([...DB.meta.docFolders, ...usedFolders])];
+  const docs = selectedFolder==="All"? allDocs : allDocs.filter(d=>(d.folder||"General")===selectedFolder);
   document.getElementById("content").innerHTML = `
     <div class="banner blue">Small files (under ~40KB — most PDFs/scans of receipts) are stored directly in PLS HQ. For anything already in Google Drive, or too large to store here, click <b>+ Store a document</b> below and paste the share link into the <b>Google Drive link</b> field — no need to re-upload it.</div>
+    <div class="tabs">
+      <div class="tab ${selectedFolder==='All'?'active':''}" onclick="selectedFolder='All';render();">All <span class="hint" style="font-size:11px;">(${allDocs.length})</span></div>
+      ${folders.map(f=>`<div class="tab ${selectedFolder===f?'active':''}" onclick="selectedFolder='${esc(f)}';render();">${esc(f)} <span class="hint" style="font-size:11px;">(${allDocs.filter(d=>(d.folder||'General')===f).length})</span></div>`).join("")}
+      <div class="tab" style="border-style:dashed;color:var(--text-tertiary);" onclick="addDocFolder()">+ New folder</div>
+    </div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
-      <button class="btn btn-primary btn-sm" onclick="openBillForm(null)">+ Store a document</button>
+      <button class="btn btn-primary btn-sm" onclick="openBillForm()">+ Store a document</button>
     </div>
     <div class="doc-grid">
       ${docs.length? docs.map(d=>`
         <div class="doc-card">
           <div class="doc-thumb">${d.dataUrl && d.fileType && d.fileType.startsWith("image")? `<img src="${d.dataUrl}">` : (d.driveLink? "🔗" : "🧾")}</div>
           <div class="doc-name" title="${esc(d.name)}">${esc(d.name)}</div>
-          <div class="doc-meta">${esc(d.category||"—")} · ${d.addedAt? new Date(d.addedAt).toLocaleDateString('en-ZA'):""}</div>
+          <div class="doc-meta"><span class="tag">${esc(d.folder||"General")}</span> ${esc(d.category||"—")} · ${d.addedAt? new Date(d.addedAt).toLocaleDateString('en-ZA'):""}</div>
           <div class="doc-meta">by ${esc(d.addedBy||"—")}</div>
           ${d.driveLink? `<div style="margin-top:8px;"><a href="${esc(d.driveLink)}" target="_blank" style="font-size:12px;">Open in Drive ↗</a></div>`:""}
           ${d.dataUrl && !(d.fileType||"").startsWith("image")? `<div style="margin-top:8px;"><a href="${d.dataUrl}" download="${esc(d.name)}" style="font-size:12px;">Download ↓</a></div>`:""}
           <div style="margin-top:8px;"><button class="icon-btn" onclick="deleteRow('documents','${d.id}')">Remove</button></div>
-        </div>`).join(""): `<div class="empty-state" style="grid-column:1/-1;"><div class="ic">▢</div>No documents stored yet</div>`}
+        </div>`).join(""): `<div class="empty-state" style="grid-column:1/-1;"><div class="ic">▢</div>No documents in ${selectedFolder==='All'?'the vault':'this folder'} yet</div>`}
     </div>
   `;
+}
+function addDocFolder(){
+  const name = prompt("Name for the new folder:");
+  if(!name || !name.trim()) return;
+  const clean = name.trim();
+  if(!DB.meta.docFolders.includes(clean)) DB.meta.docFolders.push(clean);
+  selectedFolder = clean;
+  saveDB(true); render();
 }
 
 /* ---------- Settings ---------- */
@@ -1778,12 +1821,16 @@ function renderSettings(){
   document.getElementById("content").innerHTML = `
     <div class="grid grid-2">
       <div class="card card-lg">
-        <div class="stat-label" style="margin-bottom:12px;">Team & split</div>
-        <p style="font-size:13px;color:var(--text-secondary);">Profit splits equally three ways: <b>${DB.meta.partners.join(", ")}</b>. Chris also keeps 100% of Pack Life Gym ticket-sale profit on top.</p>
+        <div class="stat-label" style="margin-bottom:12px;">Shareholders & split</div>
+        <p style="font-size:13px;color:var(--text-secondary);">Profit splits between <b>${DB.meta.partners.join(" and ")}</b> after the marketing reserve. Chris stepped down as a shareholder — he's no longer part of this split, but still pays suppliers directly and collects Payflex, tracked separately under Payments & Settlement. Gym ticket-sale profit stays 100% his own income, outside this split.</p>
         <div class="field"><label>Marketing reserve %</label>
-          <input type="number" id="reservePct" value="${(DB.meta.adReservePct*100).toFixed(0)}" min="0" max="100">
+          <input type="number" id="reservePct" value="${(DB.meta.adReservePct*100).toFixed(0)}" min="0" max="100" oninput="updateSplitTotalHint()">
         </div>
-        <button class="btn btn-primary btn-sm" onclick="saveReservePct()">Save</button>
+        <div class="field-row">
+          ${DB.meta.partners.map(p=>`<div class="field"><label>${esc(p)} %</label><input type="number" class="splitPctInput" data-partner="${esc(p)}" value="${((DB.meta.splitPercents[p]||0)*100).toFixed(0)}" min="0" max="100" oninput="updateSplitTotalHint()"></div>`).join("")}
+        </div>
+        <p class="hint" id="splitTotalHint" style="margin:0 0 12px;"></p>
+        <button class="btn btn-primary btn-sm" onclick="saveSplitSettings()">Save</button>
       </div>
 
       <div class="card card-lg">
@@ -1832,11 +1879,35 @@ function renderSettings(){
       </div>
     </div>
   `;
+  updateSplitTotalHint();
 }
-function saveReservePct(){
-  const v = parseFloat(document.getElementById("reservePct").value);
-  if(isNaN(v)) return;
-  DB.meta.adReservePct = v/100;
+function updateSplitTotalHint(){
+  const el = document.getElementById("splitTotalHint");
+  if(!el) return;
+  const reserve = parseFloat(document.getElementById("reservePct").value)||0;
+  let sum = reserve;
+  document.querySelectorAll(".splitPctInput").forEach(i=>{ sum += parseFloat(i.value)||0; });
+  const ok = Math.abs(sum-100) <= 0.5;
+  el.style.color = ok? "var(--text-tertiary)" : "var(--red)";
+  el.textContent = ok? `Adds up to ${sum.toFixed(0)}%` : `Adds up to ${sum.toFixed(0)}% — needs to be 100%`;
+}
+function saveSplitSettings(){
+  const reserve = parseFloat(document.getElementById("reservePct").value);
+  if(isNaN(reserve)){ toast("Enter a valid marketing reserve %"); return; }
+  const inputs = document.querySelectorAll(".splitPctInput");
+  const newSplits = {};
+  let sum = reserve;
+  inputs.forEach(el=>{
+    const v = parseFloat(el.value)||0;
+    newSplits[el.dataset.partner] = v/100;
+    sum += v;
+  });
+  if(Math.abs(sum-100) > 0.5){
+    toast(`These need to add up to 100% (marketing + shares) — currently ${sum.toFixed(1)}%`);
+    return;
+  }
+  DB.meta.adReservePct = reserve/100;
+  DB.meta.splitPercents = newSplits;
   saveDB(true); render();
 }
 function saveSettlementSettings(){
@@ -1879,6 +1950,7 @@ function importBackup(file){
       DB = incoming;
       DB.meta = Object.assign(emptyDB().meta, DB.meta||{});
       ["orders","transactions","documents","ticketSales","reviewQueue","skuMap","payouts"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
+      migrateChrisOwnershipChange();
       saveDB(true);
       toast(`Imported ${DB.orders.length} orders, ${DB.transactions.length} transactions`);
       render();
@@ -2032,26 +2104,55 @@ function openBillForm(file){
   const sizeOk = file ? file.size < 45000 : true;
   openModal(`
     <h3>Store a bill / document</h3><p class="sub">${file? esc(file.name) : "Attach a file, or just log it with a Drive link."}</p>
+    <div class="field">
+      <label>File ${file? "":"(optional — you can also just fill in the details and a Drive link below)"}</label>
+      <input type="file" id="f_file" ${file? "":""}>
+      <p class="hint" id="f_fileHint" style="margin:4px 0 0;"></p>
+    </div>
     <div class="field"><label>Name</label><input id="f_name" value="${file?esc(file.name):''}"></div>
     <div class="field-row">
+      <div class="field"><label>Folder</label>
+        <select id="f_folder">${DB.meta.docFolders.map(f=>`<option ${f===(selectedFolder!=='All'?selectedFolder:'General')?'selected':''}>${esc(f)}</option>`).join("")}</select>
+      </div>
       <div class="field"><label>Category</label><select id="f_category"><option value="">Not sure — send to review</option>${DB.meta.categories.map(c=>`<option>${esc(c)}</option>`).join("")}</select></div>
-      <div class="field"><label>Amount (R, optional)</label><input id="f_amount" type="number" step="0.01"></div>
     </div>
-    <div class="field"><label>Date</label><input id="f_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-    <div class="field"><label>Google Drive link ${file && !sizeOk? "(file's too big to store here — paste the link instead)" : "(optional — link to the file if it's already in Drive, or the upload was too large to embed)"}</label><input id="f_link" placeholder="https://drive.google.com/..."></div>
+    <div class="field-row">
+      <div class="field"><label>Amount (R, optional)</label><input id="f_amount" type="number" step="0.01"></div>
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    </div>
+    <div class="field"><label>Google Drive link ${file && !sizeOk? "(file's too big to store here — paste the link instead)" : "(optional — link to the file if it's already in Drive, or the upload is too large to embed)"}</label><input id="f_link" placeholder="https://drive.google.com/..."></div>
     <div class="field"><label>Note</label><textarea id="f_note"></textarea></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitBillForm(${file?'true':'false'})">Save</button>
+      <button class="btn btn-primary" onclick="submitBillForm()">Save</button>
     </div>
   `);
-  window._pendingFile = file;
+  window._pendingFile = file || null;
+  const fileInput = document.getElementById("f_file");
+  if(file){
+    // A file was already handed in (e.g. dropped on the Upload Center dropzone) — reflect it, but still let them swap it.
+    updateFileHint(file);
+  }
+  fileInput.onchange = e=>{
+    const f = e.target.files[0];
+    window._pendingFile = f || null;
+    if(f && !document.getElementById("f_name").value) document.getElementById("f_name").value = f.name;
+    updateFileHint(f);
+  };
 }
-function submitBillForm(hasFile){
+function updateFileHint(f){
+  const hint = document.getElementById("f_fileHint");
+  if(!hint) return;
+  if(!f){ hint.textContent = ""; return; }
+  hint.textContent = f.size < 45000
+    ? `${f.name} (${Math.round(f.size/1024)}KB) — will be stored directly.`
+    : `${f.name} (${Math.round(f.size/1024)}KB) — too large to store here; paste a Drive link below instead, or the file just won't attach.`;
+}
+function submitBillForm(){
   const finish = (dataUrl, fileType) => {
     const cat = val('f_category');
     const doc = {
-      id:uid(), name:val('f_name')||"Untitled document", category:cat||"Uncategorized",
+      id:uid(), name:val('f_name')||"Untitled document", category:cat||"Uncategorized", folder:val('f_folder')||"General",
       month:selectedMonth, note:val('f_note'), driveLink: document.getElementById('f_link')?document.getElementById('f_link').value:"",
       dataUrl: dataUrl||"", fileType: fileType||"", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()
     };
@@ -2070,10 +2171,11 @@ function submitBillForm(hasFile){
     }
     closeModal(); saveDB(true); render();
   };
-  if(hasFile && window._pendingFile && window._pendingFile.size < 45000){
+  const f = window._pendingFile;
+  if(f && f.size < 45000){
     const reader = new FileReader();
-    reader.onload = e => finish(e.target.result, window._pendingFile.type);
-    reader.readAsDataURL(window._pendingFile);
+    reader.onload = e => finish(e.target.result, f.type);
+    reader.readAsDataURL(f);
   } else {
     finish(null,null);
   }
@@ -2119,7 +2221,7 @@ async function init(){
   ms.onchange = ()=>{ selectedMonth=ms.value; clearSelection(); render(); };
 
   const idSel = document.getElementById("identitySelect");
-  idSel.innerHTML += PARTNERS.map(p=>`<option value="${p}">${p}</option>`).join("") + `<option value="Other">Other</option>`;
+  idSel.innerHTML += TEAM.map(p=>`<option value="${p}">${p}</option>`).join("") + `<option value="Other">Other</option>`;
   idSel.onchange = ()=>{ currentUser = idSel.value; };
 
   document.querySelectorAll(".nav-item").forEach(n=>{
