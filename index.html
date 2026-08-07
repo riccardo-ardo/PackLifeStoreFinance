@@ -1240,6 +1240,121 @@ function partnerLedger(){
   names.forEach(p=>{ totals[p].balance = totals[p].earned - totals[p].paid; });
   return totals;
 }
+function monthPaymentBreakdown(m){
+  const breakdown = {EFT:0, Yoco:0, Ikhoka:0, Payflex:0};
+  ordersForMonth(m).forEach(o=>{
+    const pm = PAYMENT_METHODS.includes(o.paymentMethod)? o.paymentMethod : "EFT";
+    breakdown[pm] += (+o.costToClient||0);
+  });
+  return breakdown;
+}
+function ledgerStatusLabel(p, t){
+  if(t.balance>0.01) return `Still owed to ${p}`;
+  if(t.balance<-0.01) return `${p} owes the business`;
+  return "Settled up";
+}
+function exportBusinessOverviewPDF(){
+  const ledger = partnerLedger();
+  const y = yearFigures();
+  const totalPb = {EFT:0,Yoco:0,Ikhoka:0,Payflex:0};
+  const monthRowsHtml = MONTHS.map(m=>{
+    const f = monthFigures(m), s = settlementForMonth(m), pb = monthPaymentBreakdown(m);
+    PAYMENT_METHODS.forEach(pm=>totalPb[pm]+=pb[pm]);
+    return `<tr>
+      <td>${m}</td>
+      <td style="text-align:right;">${R(f.revenue)}</td>
+      <td style="text-align:right;">${R(pb.EFT)}</td>
+      <td style="text-align:right;">${R(pb.Yoco)}</td>
+      <td style="text-align:right;">${R(pb.Ikhoka)}</td>
+      <td style="text-align:right;">${R(pb.Payflex)}</td>
+      <td style="text-align:right;">${R(f.netProfit)}</td>
+      <td style="text-align:right;">${R(f.adReserve)}</td>
+      ${DB.meta.partners.map(p=>`<td style="text-align:right;">${R(f.split[p])}</td>`).join("")}
+      <td style="text-align:right;color:${s.transferToChris<0?'#FF3B30':'inherit'}">${s.transferToChris<0? `(${R(Math.abs(s.transferToChris))})` : R(s.transferToChris)}</td>
+    </tr>`;
+  }).join("");
+  const totalRow = `<tr style="font-weight:700;background:#FBFBFD;">
+    <td>TOTAL</td>
+    <td style="text-align:right;">${R(y.revenue)}</td>
+    <td style="text-align:right;">${R(totalPb.EFT)}</td>
+    <td style="text-align:right;">${R(totalPb.Yoco)}</td>
+    <td style="text-align:right;">${R(totalPb.Ikhoka)}</td>
+    <td style="text-align:right;">${R(totalPb.Payflex)}</td>
+    <td style="text-align:right;">${R(y.netProfit)}</td>
+    <td style="text-align:right;">${R(y.adReserve)}</td>
+    ${DB.meta.partners.map(p=>`<td style="text-align:right;">${R(y.split[p])}</td>`).join("")}
+    <td style="text-align:right;color:${y.chrisSettlement<0?'#FF3B30':'inherit'}">${y.chrisSettlement<0? `(${R(Math.abs(y.chrisSettlement))})` : R(y.chrisSettlement)}</td>
+  </tr>`;
+  const ledgerRows = [...DB.meta.partners, "Chris"].map(p=>{
+    const t = ledger[p];
+    return `<tr><td>${esc(p)}</td><td style="text-align:right;">${R(t.earned)}</td><td style="text-align:right;">${R(t.paid)}</td><td style="text-align:right;">${R(Math.abs(t.balance))}</td><td>${esc(ledgerStatusLabel(p,t))}</td></tr>`;
+  }).join("");
+  const w = window.open("", "_blank");
+  if(!w){ toast("Your browser blocked the pop-up — allow pop-ups for this site and try again"); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>PLS HQ — Full Year Overview</title>
+    <style>
+      body{font-family:-apple-system,"Segoe UI",sans-serif;padding:30px;color:#1D1D1F;max-width:1150px;margin:0 auto;}
+      h1{font-size:19px;margin-bottom:2px;} .sub{color:#6E6E73;font-size:13px;margin-top:0;}
+      h2{font-size:14px;margin-top:26px;margin-bottom:6px;border-bottom:1px solid #E5E5EA;padding-bottom:6px;}
+      table{width:100%;border-collapse:collapse;font-size:11px;}
+      td,th{padding:5px 6px;border-bottom:1px solid #EEEEF1;text-align:left;white-space:nowrap;}
+      th{color:#6E6E73;font-weight:600;font-size:10px;text-transform:uppercase;}
+      .btn{background:#FF5C35;color:#fff;border:none;padding:10px 18px;border-radius:20px;font-size:14px;cursor:pointer;margin-bottom:24px;}
+      @media print{.btn{display:none;} @page{size:landscape;}}
+    </style></head>
+    <body>
+    <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    <h1>Pack Life Store — Full Year Overview</h1>
+    <p class="sub">Generated ${new Date().toLocaleDateString('en-ZA')}</p>
+
+    <h2>Outstanding balances (all time)</h2>
+    <table>
+      <tr><th>Who</th><th style="text-align:right;">Earned</th><th style="text-align:right;">Paid</th><th style="text-align:right;">Outstanding</th><th>Status</th></tr>
+      ${ledgerRows}
+    </table>
+
+    <h2>Monthly breakdown</h2>
+    <table>
+      <tr>
+        <th>Month</th><th style="text-align:right;">Revenue</th>
+        <th style="text-align:right;">EFT</th><th style="text-align:right;">Yoco</th><th style="text-align:right;">Ikhoka</th><th style="text-align:right;">Payflex</th>
+        <th style="text-align:right;">Net Profit</th><th style="text-align:right;">Marketing</th>
+        ${DB.meta.partners.map(p=>`<th style="text-align:right;">${esc(p)}</th>`).join("")}
+        <th style="text-align:right;">Chris (settlement)</th>
+      </tr>
+      ${monthRowsHtml}
+      ${totalRow}
+    </table>
+    <p style="font-size:11px;color:#6E6E73;margin-top:10px;">Chris's column is money owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round.</p>
+    </body></html>`);
+  w.document.close();
+}
+function exportBusinessOverviewCSV(){
+  const ledger = partnerLedger();
+  const y = yearFigures();
+  const q = v => `"${String(v==null?"":v).replace(/"/g,'""')}"`;
+  let csv = "Pack Life Store - Full Year Overview\n";
+  csv += `Generated,${new Date().toLocaleDateString('en-ZA')}\n\n`;
+  csv += "Outstanding balances (all time)\nWho,Earned,Paid,Outstanding,Status\n";
+  [...DB.meta.partners, "Chris"].forEach(p=>{
+    const t = ledger[p];
+    csv += `${q(p)},${t.earned.toFixed(2)},${t.paid.toFixed(2)},${Math.abs(t.balance).toFixed(2)},${q(ledgerStatusLabel(p,t))}\n`;
+  });
+  csv += "\nMonthly breakdown\n";
+  csv += `Month,Revenue,EFT,Yoco,Ikhoka,Payflex,Net Profit,Marketing,${DB.meta.partners.join(",")},Chris (settlement)\n`;
+  const totalPb = {EFT:0,Yoco:0,Ikhoka:0,Payflex:0};
+  MONTHS.forEach(m=>{
+    const f = monthFigures(m), s = settlementForMonth(m), pb = monthPaymentBreakdown(m);
+    PAYMENT_METHODS.forEach(pm=>totalPb[pm]+=pb[pm]);
+    csv += `${m},${f.revenue.toFixed(2)},${pb.EFT.toFixed(2)},${pb.Yoco.toFixed(2)},${pb.Ikhoka.toFixed(2)},${pb.Payflex.toFixed(2)},${f.netProfit.toFixed(2)},${f.adReserve.toFixed(2)},${DB.meta.partners.map(p=>f.split[p].toFixed(2)).join(",")},${s.transferToChris.toFixed(2)}\n`;
+  });
+  csv += `TOTAL,${y.revenue.toFixed(2)},${totalPb.EFT.toFixed(2)},${totalPb.Yoco.toFixed(2)},${totalPb.Ikhoka.toFixed(2)},${totalPb.Payflex.toFixed(2)},${y.netProfit.toFixed(2)},${y.adReserve.toFixed(2)},${DB.meta.partners.map(p=>y.split[p].toFixed(2)).join(",")},${y.chrisSettlement.toFixed(2)}\n`;
+  const blob = new Blob([csv],{type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `plshq-full-year-overview-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
 function exportChrisStatementPDF(month){
   const s = settlementForMonth(month);
   const ords = ordersForMonth(month);
@@ -1356,6 +1471,11 @@ function renderSettlement(){
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px;">
       <button class="btn btn-secondary btn-sm" onclick="exportChrisStatementCSV('${selectedMonth}')">⇩ Export ${selectedMonth} as CSV</button>
       <button class="btn btn-primary btn-sm" onclick="exportChrisStatementPDF('${selectedMonth}')">🖨 Export ${selectedMonth} statement (PDF)</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px;">
+      <span class="hint" style="align-self:center;margin-right:4px;">Whole business, all 12 months —</span>
+      <button class="btn btn-secondary btn-sm" onclick="exportBusinessOverviewCSV()">⇩ Full year overview (CSV)</button>
+      <button class="btn btn-primary btn-sm" onclick="exportBusinessOverviewPDF()">🖨 Full year overview (PDF)</button>
     </div>
 
     <div class="grid grid-3">
