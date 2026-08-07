@@ -1696,50 +1696,47 @@ function parseWixOrderPdfText(text){
   if(orderLineIdx>=0 && lines[orderLineIdx+1]) customer = lines[orderLineIdx+1].split(",")[0].trim();
 
   let date = "";
-  const dateM = joined.match(/Placed on\s+(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})/i);
-  if(dateM){
-    const mi = MONTH_NAME_IDX[dateM[2].slice(0,3).toLowerCase()];
-    if(mi!==undefined) date = new Date(Date.UTC(parseInt(dateM[3]), mi, parseInt(dateM[1]))).toISOString();
-  }
+  const dateM = joined.match(/Placed on\s+(.+)/i);
+  if(dateM) date = parseNamedDate(dateM[1]);
 
   const paymentMethod = detectPaymentMethod(joined);
-
-  const couponM = joined.match(/(?:Coupon|Discount code|Promo code)[:\s]+(\S+)/i);
-  const coupon = couponM? couponM[1] : "";
 
   const shippingM = joined.match(/Shipping\s+R\s?([0-9][0-9,]*\.\d{2})/i);
   const shipping = shippingM? parseFloat(shippingM[1].replace(/,/g,"")) : 0;
 
+  // Every item ends in a line like "x1 R 640.39" or "R 509.15 x2 R 1,018.30" — anchor on
+  // that (not the SKU, which isn't always present) and walk backward to pick up whatever
+  // product name / SKU / variant / coupon precede it. This also sidesteps struck-through
+  // "was R xxx" discount prices, since the anchor's own total is the actual amount charged.
+  const anchorRe = /^(?:R\s?([0-9][0-9,]*\.\d{2})\s+)?x\s?(\d+)\s+R\s?([0-9][0-9,]*\.\d{2})$/i;
+  const anchorIdxs = [];
+  lines.forEach((l,i)=>{ if(anchorRe.test(l)) anchorIdxs.push(i); });
+  const headerEndIdx = lines.findIndex(l=>/^Placed on/i.test(l));
+
   const rows = [];
-  lines.forEach((line,i)=>{
-    const skuM = line.match(/^SKU:\s*(\S+)/i);
-    if(!skuM) return;
-    const sku = skuM[1];
-    // Product name: nearest preceding line(s), skipping Size/Colour and stopping at header/customer lines
-    let product = "";
-    for(let j=i-1;j>=Math.max(0,i-3);j--){
-      const cand = lines[j];
-      if(/^(Size|Colou?r):/i.test(cand)) continue;
-      if(/^Order\s*#/i.test(cand) || /^Placed on/i.test(cand) || cand.includes("@")) break;
-      product = product? `${cand} ${product}` : cand;
-    }
-    // Price/qty: scan a small window of lines after the SKU line and join them, since the
-    // price, "x2", and line total don't always land on exactly one text line in every PDF.
-    let unitPrice=0, qty=1, lineTotal=0;
-    const windowText = lines.slice(i+1, i+6).join(" ");
-    const pm = windowText.match(/R\s?([0-9][0-9,]*\.\d{2})\s*(?:x\s?(\d+))?\s*(?:R\s?([0-9][0-9,]*\.\d{2}))?/i);
-    if(pm){
-      unitPrice = parseFloat(pm[1].replace(/,/g,""));
-      qty = pm[2]? parseInt(pm[2]) : 1;
-      lineTotal = pm[3]? parseFloat(pm[3].replace(/,/g,"")) : unitPrice;
+  anchorIdxs.forEach((idx,k)=>{
+    const m = lines[idx].match(anchorRe);
+    const qty = parseInt(m[2])||1;
+    const lineTotal = parseFloat(m[3].replace(/,/g,""));
+    const unitPrice = m[1]? parseFloat(m[1].replace(/,/g,"")) : Math.round((lineTotal/qty)*100)/100;
+    const blockStart = k===0? headerEndIdx+1 : anchorIdxs[k-1]+1;
+    let product="", sku="", variant="", coupon="";
+    for(let j=blockStart;j<idx;j++){
+      const l = lines[j]; let mm;
+      if((mm=l.match(/^SKU:\s*(\S+)/i))){ sku=mm[1]; continue; }
+      if((mm=l.match(/^(?:Size|Colou?r|Flavou?r):\s*(.+)/i))){ variant=mm[1]; continue; }
+      if((mm=l.match(/^([A-Za-z0-9]+)\s*\(-?R\s?[0-9.,]+\)/))){ coupon=mm[1]; continue; }
+      if(/^R\s?[0-9][0-9,]*\.\d{2}$/.test(l)) continue; // standalone price/strikethrough line
+      if(!product) product = l;
     }
     rows.push({
-      orderNo, date, customer, sku, product: product.trim(), qty,
-      unitPrice, price: lineTotal || unitPrice, coupon, paymentMethod
+      orderNo, date, customer, sku,
+      product: variant? `${product} (${variant})` : product,
+      qty, unitPrice, price: lineTotal, coupon, paymentMethod
     });
   });
   if(!rows.length){
-    rows.push({orderNo, date, customer, sku:"", product:"", qty:1, unitPrice:0, price:0, coupon, paymentMethod});
+    rows.push({orderNo, date, customer, sku:"", product:"", qty:1, unitPrice:0, price:0, coupon:"", paymentMethod});
   } else if(shipping>0){
     rows.push({orderNo, date, customer, sku:"", product:"Shipping", qty:1, unitPrice:shipping, price:shipping, coupon:"", paymentMethod});
   }
