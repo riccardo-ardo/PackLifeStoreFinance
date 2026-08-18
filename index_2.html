@@ -363,8 +363,8 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 const CONFIG = {
   // 1. Create a free bin at https://jsonbin.io (see SETUP.md)
   // 2. Paste your Bin ID and X-Master-Key below
-  JSONBIN_BIN_ID: "6a71c7b6f5f4af5e29e95911",
-  JSONBIN_API_KEY: "$2a$10$TckKi6ppJW2MOaBYNYg5xe.MpVd/D0bby8ovrw2uO1X5xhJ5ba94S",
+  JSONBIN_BIN_ID: "PASTE_YOUR_BIN_ID_HERE",
+  JSONBIN_API_KEY: "PASTE_YOUR_X-MASTER-KEY_HERE",
   JSONBIN_BASE: "https://api.jsonbin.io/v3/b/"
 };
 if(window.pdfjsLib){
@@ -514,6 +514,29 @@ function monthOf(dateStr){
   return MONTHS[d.getMonth()];
 }
 function esc(s){ return (s==null?"":String(s)).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function categoryBreakdownTable(byCategory, total){
+  const entries = Object.entries(byCategory).sort((a,b)=>b[1]-a[1]);
+  if(!entries.length) return `<div class="empty-state" style="padding:20px 0;"><div class="ic">📊</div>No expenses logged</div>`;
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Category</th><th class="num">Amount</th><th class="num">% of expenses</th></tr></thead>
+        <tbody>
+          ${entries.map(([cat,amt])=>`
+            <tr>
+              <td>${esc(cat)}</td>
+              <td class="num">${R(amt)}</td>
+              <td class="num">${total? pct(amt/total) : "—"}</td>
+            </tr>`).join("")}
+        </tbody>
+        <tfoot>
+          <tr style="font-weight:700;border-top:2px solid var(--border);">
+            <td>Total</td><td class="num">${R(total)}</td><td class="num">100.0%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
+}
 function supplierGroup(order){
   if(order.supplier && order.supplier.trim()) return order.supplier.trim();
   return /puma/i.test(order.product||"") ? "PUMA" : "Other";
@@ -564,7 +587,7 @@ function settlementForMonth(m){
   return { payflexIn, centralIn, supplierOwedToChris, payflexNet, transferToChris, ...f };
 }
 function yearFigures(){
-  const totals = {revenue:0,cogs:0,grossProfit:0,totalExpenses:0,netProfit:0,adReserve:0,distributable:0,ticketProfit:0,chrisSettlement:0,split:{}};
+  const totals = {revenue:0,cogs:0,grossProfit:0,totalExpenses:0,netProfit:0,adReserve:0,distributable:0,ticketProfit:0,chrisSettlement:0,split:{},byCategory:{}};
   DB.meta.partners.forEach(p=>totals.split[p]=0);
   MONTHS.forEach(m=>{
     const f=monthFigures(m);
@@ -574,6 +597,7 @@ function yearFigures(){
     totals.distributable+=f.distributable; totals.ticketProfit+=f.ticketProfit;
     totals.chrisSettlement+=s.transferToChris;
     DB.meta.partners.forEach(p=>{ totals.split[p]+=f.split[p]||0; });
+    Object.entries(f.byCategory).forEach(([cat,amt])=>{ totals.byCategory[cat]=(totals.byCategory[cat]||0)+amt; });
   });
   totals.margin = totals.revenue? totals.netProfit/totals.revenue : 0;
   return totals;
@@ -1025,10 +1049,20 @@ function renderDashboard(){
         <div class="stat-sub">Margin ${pct(f.margin)}</div>
       </div>
       <div class="card">
-        <div class="stat-label">Marketing Reserve (10%)</div>
+        <div class="stat-label">Marketing Reserve (${pct(DB.meta.adReservePct)})</div>
         <div class="stat-value">${R(f.adReserve)}</div>
-        <div class="stat-sub">Set aside before the split</div>
+        <div class="stat-sub">Set aside before the split — not the same as ad spend, see breakdown below</div>
       </div>
+    </div>
+
+    <div class="section-head"><h2>Expenses by category — ${selectedMonth}</h2><span class="hint">${R(f.totalExpenses)} total this month</span></div>
+    <div class="card card-lg">
+      ${categoryBreakdownTable(f.byCategory, f.totalExpenses)}
+    </div>
+
+    <div class="section-head"><h2>Expenses by category — full year</h2><span class="hint">${R(y.totalExpenses)} total this year</span></div>
+    <div class="card card-lg">
+      ${categoryBreakdownTable(y.byCategory, y.totalExpenses)}
     </div>
 
     <div class="section-head"><h2>Profit split — ${selectedMonth}</h2><span class="hint">${DB.meta.partners.map(p=>`${p} ${pct(DB.meta.splitPercents[p]||0)}`).join(" · ")} after a ${pct(DB.meta.adReservePct)} marketing reserve</span></div>
@@ -1329,14 +1363,23 @@ function exportBusinessOverviewPDF(){
       <tr>
         <th>Month</th><th style="text-align:right;">Revenue</th>
         <th style="text-align:right;">EFT</th><th style="text-align:right;">Yoco</th><th style="text-align:right;">Ikhoka</th><th style="text-align:right;">Payflex</th>
-        <th style="text-align:right;">Net Profit</th><th style="text-align:right;">Marketing</th>
+        <th style="text-align:right;">Net Profit</th><th style="text-align:right;">Marketing Reserve</th>
         ${DB.meta.partners.map(p=>`<th style="text-align:right;">${esc(p)}</th>`).join("")}
         <th style="text-align:right;">Chris (settlement)</th>
       </tr>
       ${monthRowsHtml}
       ${totalRow}
     </table>
-    <p style="font-size:11px;color:#6E6E73;margin-top:10px;">Chris's column is money owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round.</p>
+    <p style="font-size:11px;color:#6E6E73;margin-top:10px;">Chris's column is money owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round. "Marketing Reserve" is ${pct(DB.meta.adReservePct)} of net profit set aside before the split — it is not the same as actual advertising spend, see the category breakdown below for that.</p>
+
+    <h2>Expenses by category — full year (actual spend, ${R(y.totalExpenses)} total)</h2>
+    <table>
+      <tr><th>Category</th><th style="text-align:right;">Amount</th><th style="text-align:right;">% of expenses</th></tr>
+      ${Object.entries(y.byCategory).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>`
+        <tr><td>${esc(cat)}</td><td style="text-align:right;">${R(amt)}</td><td style="text-align:right;">${y.totalExpenses? pct(amt/y.totalExpenses):"—"}</td></tr>
+      `).join("") || `<tr><td colspan="3">No expenses logged</td></tr>`}
+      <tr style="font-weight:700;background:#FBFBFD;"><td>Total</td><td style="text-align:right;">${R(y.totalExpenses)}</td><td style="text-align:right;">100.0%</td></tr>
+    </table>
     </body></html>`);
   w.document.close();
 }
@@ -1352,7 +1395,7 @@ function exportBusinessOverviewCSV(){
     csv += `${q(p)},${t.earned.toFixed(2)},${t.paid.toFixed(2)},${Math.abs(t.balance).toFixed(2)},${q(ledgerStatusLabel(p,t))}\n`;
   });
   csv += "\nMonthly breakdown\n";
-  csv += `Month,Revenue,EFT,Yoco,Ikhoka,Payflex,Net Profit,Marketing,${DB.meta.partners.join(",")},Chris (settlement)\n`;
+  csv += `Month,Revenue,EFT,Yoco,Ikhoka,Payflex,Net Profit,Marketing Reserve,${DB.meta.partners.join(",")},Chris (settlement)\n`;
   const totalPb = {EFT:0,Yoco:0,Ikhoka:0,Payflex:0};
   MONTHS.forEach(m=>{
     const f = monthFigures(m), s = settlementForMonth(m), pb = monthPaymentBreakdown(m);
@@ -1360,6 +1403,11 @@ function exportBusinessOverviewCSV(){
     csv += `${m},${f.revenue.toFixed(2)},${pb.EFT.toFixed(2)},${pb.Yoco.toFixed(2)},${pb.Ikhoka.toFixed(2)},${pb.Payflex.toFixed(2)},${f.netProfit.toFixed(2)},${f.adReserve.toFixed(2)},${DB.meta.partners.map(p=>f.split[p].toFixed(2)).join(",")},${s.transferToChris.toFixed(2)}\n`;
   });
   csv += `TOTAL,${y.revenue.toFixed(2)},${totalPb.EFT.toFixed(2)},${totalPb.Yoco.toFixed(2)},${totalPb.Ikhoka.toFixed(2)},${totalPb.Payflex.toFixed(2)},${y.netProfit.toFixed(2)},${y.adReserve.toFixed(2)},${DB.meta.partners.map(p=>y.split[p].toFixed(2)).join(",")},${y.chrisSettlement.toFixed(2)}\n`;
+  csv += "\nExpenses by category - full year (actual spend, not the marketing reserve above)\nCategory,Amount,% of expenses\n";
+  Object.entries(y.byCategory).sort((a,b)=>b[1]-a[1]).forEach(([cat,amt])=>{
+    csv += `${q(cat)},${amt.toFixed(2)},${y.totalExpenses? (amt/y.totalExpenses*100).toFixed(1):"0.0"}%\n`;
+  });
+  csv += `${q("Total")},${y.totalExpenses.toFixed(2)},100.0%\n`;
   const blob = new Blob([csv],{type:"text/csv"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -1465,6 +1513,67 @@ function exportChrisStatementCSV(month){
   a.download = `chris-statement-${month}.csv`;
   a.click();
 }
+function exportMonthCategoryBreakdownPDF(month){
+  const f = monthFigures(month);
+  const w = window.open("", "_blank");
+  if(!w){ toast("Your browser blocked the pop-up — allow pop-ups for this site and try again"); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>PLS HQ — Expense Breakdown — ${month}</title>
+    <style>
+      body{font-family:-apple-system,"Segoe UI",sans-serif;padding:36px;color:#1D1D1F;max-width:820px;margin:0 auto;}
+      h1{font-size:19px;margin-bottom:2px;} .sub{color:#6E6E73;font-size:13px;margin-top:0;}
+      h2{font-size:14px;margin-top:26px;margin-bottom:6px;border-bottom:1px solid #E5E5EA;padding-bottom:6px;}
+      table{width:100%;border-collapse:collapse;font-size:12.5px;}
+      td,th{padding:6px 8px;border-bottom:1px solid #EEEEF1;text-align:left;}
+      th{color:#6E6E73;font-weight:600;font-size:11px;text-transform:uppercase;}
+      tr.total td{font-weight:700;background:#FBFBFD;}
+      .btn{background:#FF5C35;color:#fff;border:none;padding:10px 18px;border-radius:20px;font-size:14px;cursor:pointer;margin-bottom:24px;}
+      @media print{.btn{display:none;}}
+    </style></head>
+    <body>
+    <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    <h1>Pack Life Store — Expense Breakdown</h1>
+    <p class="sub">${month} · Generated ${new Date().toLocaleDateString('en-ZA')}</p>
+
+    <h2>Summary</h2>
+    <table>
+      <tr><td>Revenue</td><td style="text-align:right;">${R(f.revenue)}</td></tr>
+      <tr><td>Total expenses</td><td style="text-align:right;">${R(f.totalExpenses)}</td></tr>
+      <tr><td>Net profit</td><td style="text-align:right;">${R(f.netProfit)}</td></tr>
+      <tr><td>Marketing reserve (${pct(DB.meta.adReservePct)} of net profit — not the same as ad spend)</td><td style="text-align:right;">${R(f.adReserve)}</td></tr>
+    </table>
+
+    <h2>Expenses by category — where the money actually went</h2>
+    <table>
+      <tr><th>Category</th><th style="text-align:right;">Amount</th><th style="text-align:right;">% of expenses</th></tr>
+      ${Object.entries(f.byCategory).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>`
+        <tr><td>${esc(cat)}</td><td style="text-align:right;">${R(amt)}</td><td style="text-align:right;">${f.totalExpenses? pct(amt/f.totalExpenses):"—"}</td></tr>
+      `).join("") || `<tr><td colspan="3">No expenses logged for ${month}</td></tr>`}
+      <tr class="total"><td>Total</td><td style="text-align:right;">${R(f.totalExpenses)}</td><td style="text-align:right;">100.0%</td></tr>
+    </table>
+    </body></html>`);
+  w.document.close();
+}
+function exportMonthCategoryBreakdownCSV(month){
+  const f = monthFigures(month);
+  const q = v => `"${String(v==null?"":v).replace(/"/g,'""')}"`;
+  let csv = `Pack Life Store - Expense Breakdown\n`;
+  csv += `Month,${month}\nGenerated,${new Date().toLocaleDateString('en-ZA')}\n\n`;
+  csv += `Summary\n`;
+  csv += `Revenue,${f.revenue.toFixed(2)}\n`;
+  csv += `Total expenses,${f.totalExpenses.toFixed(2)}\n`;
+  csv += `Net profit,${f.netProfit.toFixed(2)}\n`;
+  csv += `Marketing reserve (${pct(DB.meta.adReservePct)} of net profit - not ad spend),${f.adReserve.toFixed(2)}\n\n`;
+  csv += `Expenses by category\nCategory,Amount,% of expenses\n`;
+  Object.entries(f.byCategory).sort((a,b)=>b[1]-a[1]).forEach(([cat,amt])=>{
+    csv += `${q(cat)},${amt.toFixed(2)},${f.totalExpenses? (amt/f.totalExpenses*100).toFixed(1):"0.0"}%\n`;
+  });
+  csv += `${q("Total")},${f.totalExpenses.toFixed(2)},100.0%\n`;
+  const blob = new Blob([csv],{type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `expense-breakdown-${month}.csv`;
+  a.click();
+}
 function renderSettlement(){
   pageHeader("Payments & Settlement");
   const s = settlementForMonth(selectedMonth);
@@ -1482,6 +1591,11 @@ function renderSettlement(){
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px;">
       <button class="btn btn-secondary btn-sm" onclick="exportChrisStatementCSV('${selectedMonth}')">⇩ Export ${selectedMonth} as CSV</button>
       <button class="btn btn-primary btn-sm" onclick="exportChrisStatementPDF('${selectedMonth}')">🖨 Export ${selectedMonth} statement (PDF)</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px;">
+      <span class="hint" style="align-self:center;margin-right:4px;">Where the money went, ${selectedMonth} —</span>
+      <button class="btn btn-secondary btn-sm" onclick="exportMonthCategoryBreakdownCSV('${selectedMonth}')">⇩ Expense breakdown (CSV)</button>
+      <button class="btn btn-primary btn-sm" onclick="exportMonthCategoryBreakdownPDF('${selectedMonth}')">🖨 Expense breakdown (PDF)</button>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px;">
       <span class="hint" style="align-self:center;margin-right:4px;">Whole business, all 12 months —</span>
@@ -1613,9 +1727,14 @@ function renderDistribution(){
     <div class="section-head"><h2>How the split works</h2></div>
     <div class="banner blue">Each month: <b>Net Profit</b> = Gross Profit − Expenses. <b>${pct(DB.meta.adReservePct)}</b> is set aside for marketing. What's left splits between the two shareholders — ${DB.meta.partners.map(p=>`<b>${esc(p)} ${pct(DB.meta.splitPercents[p]||0)}</b>`).join(" and ")}. Chris stepped down as a shareholder — he's no longer part of this split. He still pays suppliers directly and collects Payflex, tracked as its own running settlement below (and on Payments & Settlement).</div>
 
+    <div class="section-head"><h2>Expenses by category — full year</h2><span class="hint">${R(y.totalExpenses)} total · this is actual spend, not the marketing reserve above</span></div>
+    <div class="card card-lg">
+      ${categoryBreakdownTable(y.byCategory, y.totalExpenses)}
+    </div>
+
     <div class="table-wrap" style="margin-top:8px;">
       <table>
-        <thead><tr><th>Month</th><th class="num">Net Profit</th><th class="num">Marketing</th><th class="num">Distributable</th>${DB.meta.partners.map(p=>`<th class="num">${esc(p)}</th>`).join("")}<th class="num">Chris (settlement)</th></tr></thead>
+        <thead><tr><th>Month</th><th class="num">Net Profit</th><th class="num">Marketing Reserve</th><th class="num">Distributable</th>${DB.meta.partners.map(p=>`<th class="num">${esc(p)}</th>`).join("")}<th class="num">Chris (settlement)</th></tr></thead>
         <tbody>
           ${MONTHS.map(m=>{ const f=monthFigures(m); const s=settlementForMonth(m); return `
             <tr>
