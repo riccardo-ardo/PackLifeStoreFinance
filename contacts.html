@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PLS HQ — Contacts</title>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+
+<style>
+/* ============================================================
+   PLS HQ — design tokens
+   Palette: Apple-light neutrals + Pack Life "kinetic orange"
+   ============================================================ */
+:root{
+  --bg:#F5F5F7;
+  --surface:#FFFFFF;
+  --surface-alt:#FBFBFD;
+  --border:#E5E5EA;
+  --border-soft:#EEEEF1;
+  --text:#1D1D1F;
+  --text-secondary:#6E6E73;
+  --text-tertiary:#AEAEB2;
+  --accent:#FF5C35;
+  --accent-deep:#E6431D;
+  --accent-soft:#FFEDE6;
+  --blue:#0071E3;
+  --blue-soft:#E8F2FE;
+  --green:#2FA84F;
+  --green-soft:#E6F6EA;
+  --amber:#FF9F0A;
+  --amber-soft:#FFF3E0;
+  --red:#FF3B30;
+  --red-soft:#FFEBEA;
+  --ric:#0071E3;
+  --anna:#AF52DE;
+  --chris:#2FA84F;
+  --radius-lg:20px;
+  --radius-md:14px;
+  --radius-sm:10px;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+  --shadow-lg:0 4px 12px rgba(0,0,0,.06), 0 16px 40px rgba(0,0,0,.08);
+  --font-display: -apple-system, "SF Pro Display", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-body: -apple-system, "SF Pro Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Menlo", "Cascadia Code", monospace;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+::selection{background:var(--accent-soft);color:var(--accent-deep);}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+a{color:var(--blue);}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:#D6D6DA;border-radius:10px;border:2px solid var(--bg);}
+::-webkit-scrollbar-track{background:transparent;}
+
+/* ---------- App shell ---------- */
+#app{display:flex;min-height:100vh;}
+
+.sidebar{
+  width:236px;flex:0 0 236px;
+  background:var(--surface-alt);
+  border-right:1px solid var(--border);
+  padding:20px 14px;
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 8px 20px;}
+.brand-mark{
+  width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-deep));
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:800;font-size:14px;font-family:var(--font-display);
+  box-shadow:var(--shadow-sm);
+}
+.brand-text{line-height:1.15;}
+.brand-text .t1{font-weight:700;font-size:14.5px;letter-spacing:-.01em;}
+.brand-text .t2{font-size:11px;color:var(--text-secondary);}
+
+.nav-group{margin-bottom:18px;}
+.nav-label{font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.06em;padding:0 10px;margin-bottom:6px;}
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 10px;border-radius:9px;
+  font-size:13.5px;font-weight:500;color:var(--text);
+  cursor:pointer;user-select:none;margin-bottom:2px;
+  transition:background .12s ease;
+}
+.nav-item:hover{background:var(--border-soft);}
+.nav-item.active{background:var(--text);color:#fff;}
+.nav-item .ic{width:18px;height:18px;flex:0 0 18px;display:flex;align-items:center;justify-content:center;}
+.nav-item .badge{
+  margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;
+  border-radius:20px;padding:1px 6px;min-width:16px;text-align:center;
+}
+.nav-item.active .badge{background:rgba(255,255,255,.25);}
+
+.sync-box{
+  margin-top:auto;padding:10px 10px;border-radius:12px;background:var(--surface);
+  border:1px solid var(--border);font-size:11.5px;color:var(--text-secondary);
+}
+.sync-row{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:0 0 7px;}
+.dot.bad{background:var(--red);}
+.dot.mid{background:var(--amber);}
+
+.main{flex:1;min-width:0;}
+.topbar{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;gap:14px;
+  padding:14px 28px;background:rgba(245,245,247,.82);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+}
+.page-title{font-family:var(--font-display);font-weight:700;font-size:20px;letter-spacing:-.02em;}
+.spacer{flex:1;}
+.pill-select{
+  appearance:none;background:var(--surface);border:1px solid var(--border);
+  padding:7px 30px 7px 12px;border-radius:20px;font-size:13px;font-weight:600;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%236E6E73'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center;
+}
+.identity-select{border-color:var(--border);}
+.btn{
+  border:none;border-radius:20px;padding:8px 16px;font-size:13px;font-weight:600;
+  display:inline-flex;align-items:center;gap:6px;transition:transform .1s ease, opacity .12s ease;
+}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent-deep);}
+.btn-secondary{background:var(--surface);border:1px solid var(--border);color:var(--text);}
+.btn-secondary:hover{background:var(--border-soft);}
+.btn-ghost{background:transparent;color:var(--blue);padding:8px 10px;}
+.btn-danger{background:var(--red-soft);color:var(--red);}
+.btn-sm{padding:5px 11px;font-size:12px;border-radius:16px;}
+
+.content{padding:22px 28px 60px;max-width:1360px;}
+.hidden{display:none !important;}
+
+/* ---------- Cards / grid ---------- */
+.grid{display:grid;gap:16px;}
+.grid-4{grid-template-columns:repeat(4,1fr);}
+.grid-3{grid-template-columns:repeat(3,1fr);}
+.grid-2{grid-template-columns:repeat(2,1fr);}
+@media (max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr);}.grid-3{grid-template-columns:repeat(2,1fr);}}
+
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:20px;box-shadow:var(--shadow-sm);
+}
+.card-lg{padding:26px;}
+.stat-label{font-size:12px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+.stat-value{font-family:var(--font-mono);font-size:30px;font-weight:600;letter-spacing:-.02em;}
+.stat-sub{font-size:12px;color:var(--text-tertiary);margin-top:6px;}
+.stat-value.pos{color:var(--green);}
+.stat-value.neg{color:var(--red);}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;}
+.chip.up{background:var(--green-soft);color:var(--green);}
+.chip.down{background:var(--red-soft);color:var(--red);}
+
+.section-head{display:flex;align-items:center;gap:10px;margin:30px 0 14px;}
+.section-head h2{font-family:var(--font-display);font-size:17px;font-weight:700;letter-spacing:-.01em;margin:0;}
+.section-head .hint{font-size:12.5px;color:var(--text-tertiary);}
+
+/* ---------- Rings (signature element) ---------- */
+.rings-wrap{display:flex;align-items:center;gap:26px;flex-wrap:wrap;}
+.rings-legend{display:flex;flex-direction:column;gap:10px;min-width:190px;}
+.legend-row{display:flex;align-items:center;gap:10px;font-size:13px;}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex:0 0 10px;}
+.legend-name{font-weight:600;flex:1;}
+.legend-amt{font-family:var(--font-mono);font-weight:600;}
+
+/* ---------- Tables ---------- */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{
+  text-align:left;font-size:11px;font-weight:700;color:var(--text-tertiary);
+  text-transform:uppercase;letter-spacing:.04em;padding:11px 14px;
+  background:var(--surface-alt);border-bottom:1px solid var(--border);white-space:nowrap;
+}
+tbody td{padding:10px 14px;border-bottom:1px solid var(--border-soft);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:var(--surface-alt);}
+td.num,th.num{text-align:right;font-family:var(--font-mono);}
+tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px solid var(--border);}
+.tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:var(--border-soft);color:var(--text-secondary);}
+.tag.needs{background:var(--amber-soft);color:#B4690E;}
+.tag.cog{background:var(--blue-soft);color:var(--blue);}
+.row-actions{display:flex;gap:6px;}
+.icon-btn{border:none;background:transparent;color:var(--text-tertiary);padding:4px;border-radius:6px;}
+.icon-btn:hover{background:var(--red-soft);color:var(--red);}
+
+/* ---------- Tabs (months) ---------- */
+.tabs{display:flex;gap:4px;overflow-x:auto;padding-bottom:2px;margin-bottom:16px;}
+.tab{
+  padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;color:var(--text-secondary);
+  background:var(--surface);border:1px solid var(--border);white-space:nowrap;
+}
+.tab.active{background:var(--text);color:#fff;border-color:var(--text);}
+
+/* ---------- Forms / modal ---------- */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.32);backdrop-filter:blur(3px);
+  display:flex;align-items:flex-start;justify-content:center;padding:60px 20px;z-index:100;overflow-y:auto;
+}
+.modal{
+  background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
+  width:100%;max-width:560px;padding:26px;
+}
+.modal h3{margin:0 0 4px;font-family:var(--font-display);font-size:18px;}
+.modal p.sub{margin:0 0 18px;color:var(--text-secondary);font-size:13px;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;}
+.field input:not([type="checkbox"]):not([type="radio"]),.field select,.field textarea{
+  width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:13.5px;
+  background:var(--surface-alt);color:var(--text);
+}
+.field input[type="checkbox"],.field input[type="radio"]{width:auto;flex:0 0 auto;accent-color:var(--accent);}
+.field input[type="file"]{width:100%;padding:8px 10px;border:1px dashed var(--border);border-radius:10px;background:var(--surface-alt);font-size:12.5px;}
+.field label.checkbox-label{display:flex;align-items:center;gap:8px;font-weight:500;color:var(--text);}
+.field textarea{resize:vertical;min-height:60px;}
+.field-row{display:flex;gap:12px;}
+.field-row .field{flex:1;}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;}
+
+/* ---------- Upload dropzone ---------- */
+.dropzone{
+  border:1.5px dashed var(--border);border-radius:var(--radius-lg);padding:36px 20px;
+  text-align:center;background:var(--surface-alt);cursor:pointer;transition:.15s;
+}
+.dropzone:hover,.dropzone.drag{border-color:var(--accent);background:var(--accent-soft);}
+.dropzone .ic{font-size:26px;margin-bottom:8px;}
+.dropzone .t{font-weight:600;font-size:14px;margin-bottom:2px;}
+.dropzone .s{font-size:12px;color:var(--text-tertiary);}
+
+.mapper-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0;}
+.mapper-row{display:flex;align-items:center;gap:8px;font-size:13px;}
+.mapper-row select{flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-alt);}
+
+.empty-state{padding:50px 20px;text-align:center;color:var(--text-tertiary);}
+.empty-state .ic{font-size:32px;margin-bottom:10px;}
+
+.doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;}
+.doc-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px;}
+.doc-thumb{
+  width:100%;height:90px;border-radius:8px;background:var(--surface-alt);
+  display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:10px;overflow:hidden;
+}
+.doc-thumb img{width:100%;height:100%;object-fit:cover;}
+.doc-name{font-weight:600;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.doc-meta{font-size:11px;color:var(--text-tertiary);margin-top:2px;}
+
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--text);color:#fff;padding:11px 18px;border-radius:30px;font-size:13px;font-weight:500;
+  box-shadow:var(--shadow-lg);z-index:200;opacity:0;pointer-events:none;transition:opacity .2s, transform .2s;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+.banner{
+  background:var(--amber-soft);border:1px solid #F5D9A8;color:#8A5A0A;border-radius:var(--radius-md);
+  padding:12px 16px;font-size:12.5px;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start;
+}
+.banner b{font-weight:700;}
+.banner.blue{background:var(--blue-soft);border-color:#BEDCFB;color:#0B4E8C;}
+
+@media (max-width: 860px){
+  .sidebar{position:fixed;left:-260px;transition:left .2s;z-index:50;box-shadow:var(--shadow-lg);}
+  .sidebar.open{left:0;}
+  .content{padding:16px;}
+  .grid-4,.grid-3,.grid-2{grid-template-columns:1fr;}
+}
+
+
+/* ---------- Hub-specific additions ---------- */
+.hub-hero{
+  background:linear-gradient(135deg,#1D1D1F 0%,#2c2c2e 100%);
+  border-radius:var(--radius-lg);padding:32px 30px;color:#fff;margin-bottom:26px;
+  position:relative;overflow:hidden;
+}
+.hub-hero::after{
+  content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,92,53,.35),transparent 70%);
+}
+.hub-hero h1{font-family:var(--font-display);font-size:26px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px;position:relative;}
+.hub-hero p{color:rgba(255,255,255,.68);font-size:14px;margin:0;max-width:480px;position:relative;}
+.hub-hero .clock{position:relative;font-family:var(--font-mono);font-size:13px;color:rgba(255,255,255,.55);margin-top:16px;}
+
+.launch-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:8px;}
+@media (max-width:1100px){.launch-grid{grid-template-columns:repeat(2,1fr);}}
+@media (max-width:640px){.launch-grid{grid-template-columns:1fr;}}
+.launch-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:22px;box-shadow:var(--shadow-sm);text-decoration:none;color:var(--text);
+  display:flex;flex-direction:column;gap:10px;transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  position:relative;
+}
+.launch-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:var(--border);}
+.launch-card .lc-icon{
+  width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:20px;color:#fff;
+}
+.launch-card .lc-title{font-family:var(--font-display);font-weight:700;font-size:16px;letter-spacing:-.01em;}
+.launch-card .lc-desc{font-size:12.5px;color:var(--text-secondary);line-height:1.5;}
+.launch-card .lc-arrow{position:absolute;top:20px;right:20px;color:var(--text-tertiary);font-size:14px;}
+.launch-card .lc-tag{
+  display:inline-flex;align-self:flex-start;font-size:10.5px;font-weight:700;letter-spacing:.03em;
+  padding:2px 8px;border-radius:20px;text-transform:uppercase;margin-top:auto;
+}
+
+.widget-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:start;}
+@media (max-width:960px){.widget-grid{grid-template-columns:1fr;}}
+
+.feed-item{display:flex;gap:10px;padding:11px 0;border-bottom:1px solid var(--border-soft);}
+.feed-item:last-child{border-bottom:none;}
+.feed-avatar{
+  width:28px;height:28px;border-radius:50%;flex:0 0 28px;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:11px;font-weight:700;font-family:var(--font-display);
+}
+.feed-body{flex:1;min-width:0;}
+.feed-text{font-size:13px;line-height:1.4;}
+.feed-meta{font-size:11px;color:var(--text-tertiary);margin-top:2px;}
+.feed-del{background:none;border:none;color:var(--text-tertiary);cursor:pointer;font-size:12px;padding:2px 6px;flex:0 0 auto;}
+.feed-del:hover{color:var(--red);}
+
+.link-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-soft);}
+.link-row:last-child{border-bottom:none;}
+.link-row a{flex:1;font-size:13px;font-weight:600;text-decoration:none;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.link-row a:hover{color:var(--accent);}
+.link-row .link-del{background:none;border:none;color:var(--text-tertiary);cursor:pointer;font-size:12px;}
+
+.quick-add{display:flex;gap:8px;margin-top:14px;}
+.quick-add input{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;background:var(--surface-alt);}
+.quick-add button{white-space:nowrap;}
+
+/* ---------- Kanban / status board ---------- */
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+@media (max-width:1100px){.board{grid-template-columns:repeat(2,1fr);}}
+@media (max-width:640px){.board{grid-template-columns:1fr;}}
+.board-col{background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;min-height:100px;}
+.board-col-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 4px;}
+.board-col-head .t{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);}
+.board-col-head .n{font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary);}
+.board-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 12px;margin-bottom:8px;
+  font-size:12.5px;box-shadow:var(--shadow-sm);cursor:grab;
+}
+.board-card:active{cursor:grabbing;}
+.board-card .bc-title{font-weight:600;margin-bottom:5px;line-height:1.35;}
+.board-card .bc-meta{display:flex;align-items:center;justify-content:space-between;margin-top:6px;}
+.board-card.dragging{opacity:.4;}
+.board-col.dragover{background:var(--accent-soft);}
+
+/* ---------- Calendar ---------- */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+.cal-dow{font-size:10.5px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;text-align:center;padding-bottom:4px;}
+.cal-cell{
+  background:var(--surface);border:1px solid var(--border);border-radius:9px;min-height:90px;padding:6px;
+  font-size:11px;position:relative;
+}
+.cal-cell.pad{background:transparent;border-color:transparent;}
+.cal-cell .cal-date{font-family:var(--font-mono);font-size:10.5px;color:var(--text-tertiary);margin-bottom:4px;}
+.cal-cell.today .cal-date{color:var(--accent);font-weight:800;}
+.cal-post{
+  background:var(--accent-soft);color:var(--accent-deep);border-radius:5px;padding:2px 5px;margin-bottom:3px;
+  font-size:10px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;
+}
+.cal-post.posted{background:var(--green-soft);color:#1b6b3a;}
+.cal-post.scheduled{background:var(--blue-soft);color:#0b5aad;}
+.cal-post.idea{background:var(--border-soft);color:var(--text-secondary);}
+.cal-add{
+  width:100%;background:none;border:1px dashed var(--border);border-radius:6px;color:var(--text-tertiary);
+  font-size:14px;padding:1px;margin-top:2px;
+}
+.cal-add:hover{border-color:var(--accent);color:var(--accent);}
+
+/* ---------- Avatar colors (deterministic by name) ---------- */
+.av-0{background:#0071E3;} .av-1{background:#AF52DE;} .av-2{background:#2FA84F;}
+.av-3{background:#FF9F0A;} .av-4{background:#FF3B30;} .av-5{background:#5856D6;}
+
+.tabs2{display:flex;gap:4px;margin-bottom:18px;background:var(--surface-alt);border:1px solid var(--border);border-radius:12px;padding:4px;width:fit-content;}
+.tab2{padding:7px 16px;border-radius:9px;font-size:13px;font-weight:600;color:var(--text-secondary);cursor:pointer;user-select:none;}
+.tab2.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow-sm);}
+
+.platform-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;}
+.pf-instagram{background:#FCE4EC;color:#C2185B;}
+.pf-tiktok{background:#E8EAED;color:#111;}
+.pf-facebook{background:#E8F2FE;color:#0071E3;}
+.pf-x{background:#EEE;color:#111;}
+.pf-pinterest{background:#FFEBEE;color:#C62828;}
+.pf-email{background:#FFF3E0;color:#B4690E;}
+
+.contact-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;}
+.contact-card .cc-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
+.contact-card .cc-name{font-weight:700;font-size:14.5px;}
+.contact-card .cc-cat{font-size:10.5px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.04em;margin-top:2px;}
+.contact-card .cc-row{display:flex;gap:8px;font-size:12.5px;color:var(--text-secondary);padding:3px 0;align-items:center;}
+.contact-card .cc-row a{color:var(--text-secondary);text-decoration:none;}
+.contact-card .cc-row a:hover{color:var(--accent);}
+.contact-card .cc-notes{margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft);font-size:12px;color:var(--text-secondary);line-height:1.5;}
+
+.setup-banner{
+  background:var(--amber-soft);border:1px solid #F5D9A8;color:#8A5A0A;border-radius:var(--radius-md);
+  padding:14px 16px;font-size:12.5px;margin-bottom:20px;line-height:1.6;
+}
+.setup-banner code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;font-family:var(--font-mono);font-size:11.5px;}
+
+/* ---------- Login gate ---------- */
+#loginGate{
+  position:fixed;inset:0;background:rgba(29,29,31,.55);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;z-index:999;
+}
+.login-card{
+  background:var(--surface);border-radius:var(--radius-lg);padding:32px 30px;width:340px;
+  box-shadow:var(--shadow-lg);border:1px solid var(--border);
+}
+.login-card .field{margin-bottom:12px;}
+.signed-in-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);}
+.signed-in-row button{background:none;border:none;color:var(--text-tertiary);cursor:pointer;font-size:11.5px;text-decoration:underline;padding:0;}
+.signed-in-row button:hover{color:var(--red);}
+
+.nav-item{text-decoration:none;}
+
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">PL</div>
+      <div class="brand-text">
+        <div class="t1">PLS HQ</div>
+        <div class="t2">Pack Life Store</div>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Workspace</div>
+      <a class="nav-item" href="hub.html"><span class="ic">◈</span>Dashboard</a>
+      <a class="nav-item" href="index_2.html"><span class="ic">💰</span>Finances</a>
+      <a class="nav-item" href="PUMA_to_WIX_Converter.html"><span class="ic">⇄</span>PUMA → WIX Converter</a>
+      <a class="nav-item" href="daily-updates.html"><span class="ic">📋</span>Daily Updates</a>
+      <a class="nav-item" href="social-media.html"><span class="ic">📣</span>Social Media</a>
+      <a class="nav-item active" href="contacts.html"><span class="ic">☎</span>Contacts</a>
+    </div>
+
+    <div class="sync-box" id="syncBox">
+      <div class="sync-row"><span class="dot mid" id="syncDot"></span><span id="syncText">Connecting…</span></div>
+      <div id="syncSub">—</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <button class="btn-ghost" id="menuBtn" style="display:none;font-size:18px;">☰</button>
+      <div class="page-title">Contacts</div>
+      <div class="spacer"></div>
+      <div class="signed-in-row" id="signedInRow">
+        <span id="signedInAs">–</span>
+        <button onclick="doLogout()">Sign out</button>
+      </div>
+    </div>
+    <div class="content" id="content">
+
+      <div class="setup-banner" id="setupBanner" style="display:none;">
+        <b>⚠ Shared login isn't set up yet</b> — see the banner on the <a href="hub.html">Dashboard</a> for setup steps (~5 min, one time). Until then, contacts only save on this screen.
+      </div>
+
+      <div class="tabs2">
+        <div class="tab2 active" data-tab="suppliers" onclick="switchTab('suppliers')">Suppliers</div>
+        <div class="tab2" data-tab="team" onclick="switchTab('team')">Team Directory</div>
+      </div>
+
+      <div id="tab-suppliers">
+        <div class="card card-lg">
+          <div class="section-head" style="margin:0 0 12px;"><h2>Add supplier</h2></div>
+          <div class="field-row">
+            <div class="field"><label>Company / supplier name</label><input type="text" id="supName" placeholder="e.g. PUMA South Africa"></div>
+            <div class="field"><label>Category</label><input type="text" id="supCategory" placeholder="e.g. Apparel, Packaging, Courier"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Contact person</label><input type="text" id="supContact" placeholder="e.g. Thabo Nkosi"></div>
+            <div class="field"><label>Phone</label><input type="text" id="supPhone" placeholder="+27 …"></div>
+            <div class="field"><label>Email</label><input type="text" id="supEmail" placeholder="name@supplier.com"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Payment terms</label><input type="text" id="supTerms" placeholder="e.g. 30 days EOM, COD"></div>
+          </div>
+          <div class="field"><label>Notes</label><textarea id="supNotes" placeholder="Account numbers, delivery notes, quirks worth remembering…"></textarea></div>
+          <button class="btn btn-primary" style="width:auto;padding:10px 22px;" onclick="addSupplier()">Add supplier</button>
+        </div>
+        <div class="section-head"><h2>All suppliers</h2><span class="hint" id="supCount"></span></div>
+        <div class="doc-grid" id="supplierGrid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));"></div>
+      </div>
+
+      <div id="tab-team" class="hidden">
+        <div class="card card-lg">
+          <div class="section-head" style="margin:0 0 12px;"><h2>Add team member</h2></div>
+          <div class="field-row">
+            <div class="field"><label>Name</label><input type="text" id="teamName" placeholder="e.g. Riccardo"></div>
+            <div class="field"><label>Role</label><input type="text" id="teamRole" placeholder="e.g. Founder, Ops, Social Media"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>Phone</label><input type="text" id="teamPhone" placeholder="+27 …"></div>
+            <div class="field"><label>Email</label><input type="text" id="teamEmail" placeholder="name@packlifestore.com"></div>
+          </div>
+          <button class="btn btn-primary" style="width:auto;padding:10px 22px;" onclick="addTeamMember()">Add to directory</button>
+        </div>
+        <div class="section-head"><h2>Team</h2></div>
+        <div class="doc-grid" id="teamGrid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   PLS HQ OPS — Firebase-backed shared sync + login gate
+   Real-time, private (login required), free at this scale.
+   Paste your Firebase config below, then paste the EXACT SAME
+   block into daily-updates.html, social-media.html, contacts.html
+   and hub.html so they all talk to the same project.
+   Setup steps are in the README included with these files.
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC4Jt8UK7iNWyjq417oovophYHj7dY3uWk",
+  authDomain: "pls-hq.firebaseapp.com",
+  projectId: "pls-hq",
+  storageBucket: "pls-hq.firebasestorage.app",
+  messagingSenderId: "3004819335",
+  appId: "1:3004819335:web:b6938c028697f29febd522"
+};
+const firebaseConfigured = () => FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith("PASTE_");
+
+let fbApp=null, fbAuth=null, fbDb=null, fbUnsub=null;
+const OPS_DOC_PATH = { collection: "pls_ops", doc: "shared" };
+
+function emptyOps(){
+  return {
+    dailyUpdates: [], socialPosts: [], socialNotes: {},
+    suppliers: [], team: [], announcements: [], quickLinks: [], tasks: [],
+    meta: { updatedAt: null }
+  };
+}
+let OPS = emptyOps();
+let opsSyncState = "connecting";
+
+/* email -> display name, edit this list to match your team's Firebase logins */
+const TEAM_EMAIL_MAP = {
+  "riccardomontali@gmail.com": "Riccardo",
+  "annamontali@lantic.net": "Anna",
+  "chris@packlifestore.com": "Chris",
+};
+
+function initFirebase(){
+  if(!firebaseConfigured()){ opsSyncState="unconfigured"; updateOpsSyncBox(); renderAllSafe(); return; }
+  fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+  fbAuth = firebase.auth();
+  fbDb = firebase.firestore();
+  fbAuth.onAuthStateChanged(user=>{
+    if(user){
+      hideLoginGate();
+      const known = Object.entries(TEAM_EMAIL_MAP).find(([email])=>email.toLowerCase()===user.email.toLowerCase());
+      const displayName = known ? known[1] : (user.email||"").split("@")[0];
+      localStorage.setItem("pls_identity", displayName);
+      localStorage.setItem("pls_email", user.email);
+      attachOpsListener();
+      updateSignedInAs();
+    } else {
+      opsSyncState="loggedout";
+      updateOpsSyncBox();
+      showLoginGate();
+    }
+  });
+}
+
+function attachOpsListener(){
+  if(fbUnsub) fbUnsub();
+  opsSyncState = "connecting"; updateOpsSyncBox();
+  fbUnsub = fbDb.collection(OPS_DOC_PATH.collection).doc(OPS_DOC_PATH.doc)
+    .onSnapshot(snap=>{
+      const data = snap.exists ? snap.data() : emptyOps();
+      OPS = Object.assign(emptyOps(), data);
+      Object.keys(emptyOps()).forEach(k=>{ if(OPS[k]===undefined) OPS[k]=emptyOps()[k]; });
+      opsSyncState = "ok";
+      updateOpsSyncBox();
+      renderAllSafe();
+    }, err=>{
+      console.error(err);
+      opsSyncState = "offline";
+      updateOpsSyncBox();
+    });
+}
+
+async function saveOps(showToastMsg){
+  OPS.meta.updatedAt = new Date().toISOString();
+  if(!firebaseConfigured()){ if(showToastMsg) toast("Not saved — shared storage isn't configured yet"); return; }
+  if(!fbAuth.currentUser){ if(showToastMsg) toast("Sign in to save changes"); return; }
+  opsSyncState = "saving"; updateOpsSyncBox();
+  try{
+    await fbDb.collection(OPS_DOC_PATH.collection).doc(OPS_DOC_PATH.doc).set(OPS);
+    opsSyncState = "ok";
+    if(showToastMsg) toast("Saved ✓");
+  }catch(e){
+    console.error(e);
+    opsSyncState = "offline";
+    if(showToastMsg) toast("Couldn't save — check your connection");
+  }
+  updateOpsSyncBox();
+}
+
+function updateOpsSyncBox(){
+  const dot=document.getElementById("syncDot"), text=document.getElementById("syncText"), sub=document.getElementById("syncSub");
+  if(!dot) return;
+  if(opsSyncState==="ok"){ dot.className="dot"; text.textContent="Synced with team"; sub.textContent="Last update "+ (OPS.meta.updatedAt? new Date(OPS.meta.updatedAt).toLocaleString() : "just now"); }
+  else if(opsSyncState==="connecting"){ dot.className="dot mid"; text.textContent="Connecting…"; sub.textContent="Reaching shared storage"; }
+  else if(opsSyncState==="saving"){ dot.className="dot mid"; text.textContent="Saving…"; sub.textContent="Pushing your change to the team"; }
+  else if(opsSyncState==="offline"){ dot.className="dot bad"; text.textContent="Not synced"; sub.textContent="Check your connection"; }
+  else if(opsSyncState==="loggedout"){ dot.className="dot bad"; text.textContent="Signed out"; sub.textContent="Sign in to see shared data"; }
+  else{ dot.className="dot bad"; text.textContent="Not set up"; sub.textContent="See README for setup"; }
+}
+
+/* ---------------- login gate UI ---------------- */
+function showLoginGate(){
+  let el = document.getElementById("loginGate");
+  if(!el){
+    el = document.createElement("div");
+    el.id = "loginGate";
+    el.innerHTML = `
+      <div class="login-card">
+        <div class="brand" style="margin-bottom:18px;">
+          <div class="brand-mark">PL</div>
+          <div class="brand-text"><div class="t1">PLS HQ</div><div class="t2">Pack Life Store</div></div>
+        </div>
+        <div id="loginForm">
+          <div class="field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@packlifestore.com"></div>
+          <div class="field"><label>Password</label><input type="password" id="loginPassword"></div>
+          <button class="btn btn-primary" style="width:100%;margin-top:6px;" onclick="doLogin()">Sign in</button>
+          <div id="loginError" style="color:var(--red);font-size:12px;margin-top:10px;display:none;"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    document.getElementById("loginPassword")?.addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+  }
+  el.style.display = "flex";
+}
+function hideLoginGate(){ const el=document.getElementById("loginGate"); if(el) el.style.display="none"; }
+async function doLogin(){
+  const email = document.getElementById("loginEmail").value.trim();
+  const pw = document.getElementById("loginPassword").value;
+  const errEl = document.getElementById("loginError");
+  errEl.style.display="none";
+  if(!email || !pw) return;
+  try{
+    await fbAuth.signInWithEmailAndPassword(email, pw);
+  }catch(e){
+    errEl.textContent = e.code==="auth/invalid-credential" || e.code==="auth/wrong-password" || e.code==="auth/user-not-found"
+      ? "Wrong email or password." : "Couldn't sign in (" + e.code + ")";
+    errEl.style.display="block";
+  }
+}
+function doLogout(){ if(fbAuth) fbAuth.signOut(); }
+function updateSignedInAs(){
+  const el = document.getElementById("signedInAs");
+  if(el) el.textContent = localStorage.getItem("pls_identity") || "";
+}
+
+/* ---------------- shared helpers ---------------- */
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const TEAM_NAMES = ["Riccardo","Anna","Chris"];
+function toast(msg){
+  const t=document.getElementById("toast"); if(!t) return;
+  t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"), 2600);
+}
+function avatarClass(name){
+  let h=0; for(let i=0;i<(name||"?").length;i++) h=(h*31+name.charCodeAt(i))>>>0;
+  return "av-"+(h%6);
+}
+function initials(name){
+  if(!name) return "?";
+  const p=name.trim().split(/\s+/);
+  return (p[0][0]+(p[1]?p[1][0]:"")).toUpperCase();
+}
+function timeAgo(iso){
+  if(!iso) return "";
+  const s=(Date.now()-new Date(iso).getTime())/1000;
+  if(s<60) return "just now";
+  if(s<3600) return Math.floor(s/60)+"m ago";
+  if(s<86400) return Math.floor(s/3600)+"h ago";
+  if(s<604800) return Math.floor(s/86400)+"d ago";
+  return new Date(iso).toLocaleDateString();
+}
+function escapeHtml(s){
+  return (s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function renderAllSafe(){ try{ renderAll(); }catch(e){ console.error(e); } }
+
+function loadOps(){ initFirebase(); }
+
+
+function switchTab(name){
+  document.querySelectorAll(".tab2").forEach(t=>t.classList.toggle("active", t.dataset.tab===name));
+  ["suppliers","team"].forEach(n=>document.getElementById("tab-"+n).classList.toggle("hidden", n!==name));
+}
+
+function addSupplier(){
+  const name = document.getElementById("supName").value.trim();
+  if(!name){ toast("Add a supplier name first"); return; }
+  OPS.suppliers.push({
+    id: uid(), name,
+    category: document.getElementById("supCategory").value.trim(),
+    contactPerson: document.getElementById("supContact").value.trim(),
+    phone: document.getElementById("supPhone").value.trim(),
+    email: document.getElementById("supEmail").value.trim(),
+    terms: document.getElementById("supTerms").value.trim(),
+    notes: document.getElementById("supNotes").value.trim(),
+  });
+  ["supName","supCategory","supContact","supPhone","supEmail","supTerms","supNotes"].forEach(id=>document.getElementById(id).value="");
+  saveOps(true); renderSuppliers();
+}
+function deleteSupplier(id){
+  OPS.suppliers = OPS.suppliers.filter(s=>s.id!==id);
+  saveOps(true); renderSuppliers();
+}
+function renderSuppliers(){
+  const grid = document.getElementById("supplierGrid");
+  document.getElementById("supCount").textContent = OPS.suppliers.length + " supplier" + (OPS.suppliers.length===1?"":"s");
+  if(!OPS.suppliers.length){
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="ic">☎</div>No suppliers saved yet</div>';
+    return;
+  }
+  grid.innerHTML = [...OPS.suppliers].sort((a,b)=>a.name.localeCompare(b.name)).map(s=>`
+    <div class="contact-card">
+      <div class="cc-top">
+        <div>
+          <div class="cc-name">${escapeHtml(s.name)}</div>
+          ${s.category?`<div class="cc-cat">${escapeHtml(s.category)}</div>`:""}
+        </div>
+        <button class="icon-btn" onclick="deleteSupplier('${s.id}')">✕</button>
+      </div>
+      ${s.contactPerson?`<div class="cc-row">👤 ${escapeHtml(s.contactPerson)}</div>`:""}
+      ${s.phone?`<div class="cc-row">📞 <a href="tel:${escapeHtml(s.phone)}">${escapeHtml(s.phone)}</a></div>`:""}
+      ${s.email?`<div class="cc-row">✉ <a href="mailto:${escapeHtml(s.email)}">${escapeHtml(s.email)}</a></div>`:""}
+      ${s.terms?`<div class="cc-row">🗓 ${escapeHtml(s.terms)}</div>`:""}
+      ${s.notes?`<div class="cc-notes">${escapeHtml(s.notes)}</div>`:""}
+    </div>`).join("");
+}
+
+function addTeamMember(){
+  const name = document.getElementById("teamName").value.trim();
+  if(!name){ toast("Add a name first"); return; }
+  OPS.team.push({
+    id: uid(), name,
+    role: document.getElementById("teamRole").value.trim(),
+    phone: document.getElementById("teamPhone").value.trim(),
+    email: document.getElementById("teamEmail").value.trim(),
+  });
+  ["teamName","teamRole","teamPhone","teamEmail"].forEach(id=>document.getElementById(id).value="");
+  saveOps(true); renderTeam();
+}
+function deleteTeamMember(id){
+  OPS.team = OPS.team.filter(t=>t.id!==id);
+  saveOps(true); renderTeam();
+}
+function renderTeam(){
+  const grid = document.getElementById("teamGrid");
+  if(!OPS.team.length){
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="ic">👥</div>No team members added yet</div>';
+    return;
+  }
+  grid.innerHTML = OPS.team.map(t=>`
+    <div class="contact-card">
+      <div class="cc-top">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="feed-avatar ${avatarClass(t.name)}" style="width:36px;height:36px;flex:0 0 36px;font-size:13px;">${initials(t.name)}</div>
+          <div>
+            <div class="cc-name">${escapeHtml(t.name)}</div>
+            ${t.role?`<div class="cc-cat">${escapeHtml(t.role)}</div>`:""}
+          </div>
+        </div>
+        <button class="icon-btn" onclick="deleteTeamMember('${t.id}')">✕</button>
+      </div>
+      ${t.phone?`<div class="cc-row">📞 <a href="tel:${escapeHtml(t.phone)}">${escapeHtml(t.phone)}</a></div>`:""}
+      ${t.email?`<div class="cc-row">✉ <a href="mailto:${escapeHtml(t.email)}">${escapeHtml(t.email)}</a></div>`:""}
+    </div>`).join("");
+}
+
+function renderAll(){
+  renderSuppliers();
+  renderTeam();
+  document.getElementById("setupBanner").style.display = firebaseConfigured() ? "none" : "block";
+}
+
+loadOps();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,2498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PLS HQ — Pack Life Store</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+/* ============================================================
+   PLS HQ — design tokens
+   Palette: Apple-light neutrals + Pack Life "kinetic orange"
+   ============================================================ */
+:root{
+  --bg:#F5F5F7;
+  --surface:#FFFFFF;
+  --surface-alt:#FBFBFD;
+  --border:#E5E5EA;
+  --border-soft:#EEEEF1;
+  --text:#1D1D1F;
+  --text-secondary:#6E6E73;
+  --text-tertiary:#AEAEB2;
+  --accent:#FF5C35;
+  --accent-deep:#E6431D;
+  --accent-soft:#FFEDE6;
+  --blue:#0071E3;
+  --blue-soft:#E8F2FE;
+  --green:#2FA84F;
+  --green-soft:#E6F6EA;
+  --amber:#FF9F0A;
+  --amber-soft:#FFF3E0;
+  --red:#FF3B30;
+  --red-soft:#FFEBEA;
+  --ric:#0071E3;
+  --anna:#AF52DE;
+  --chris:#2FA84F;
+  --radius-lg:20px;
+  --radius-md:14px;
+  --radius-sm:10px;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+  --shadow-lg:0 4px 12px rgba(0,0,0,.06), 0 16px 40px rgba(0,0,0,.08);
+  --font-display: -apple-system, "SF Pro Display", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-body: -apple-system, "SF Pro Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Menlo", "Cascadia Code", monospace;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+::selection{background:var(--accent-soft);color:var(--accent-deep);}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+a{color:var(--blue);}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:#D6D6DA;border-radius:10px;border:2px solid var(--bg);}
+::-webkit-scrollbar-track{background:transparent;}
+
+/* ---------- App shell ---------- */
+#app{display:flex;min-height:100vh;}
+
+.sidebar{
+  width:236px;flex:0 0 236px;
+  background:var(--surface-alt);
+  border-right:1px solid var(--border);
+  padding:20px 14px;
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 8px 20px;}
+.brand-mark{
+  width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-deep));
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:800;font-size:14px;font-family:var(--font-display);
+  box-shadow:var(--shadow-sm);
+}
+.brand-text{line-height:1.15;}
+.brand-text .t1{font-weight:700;font-size:14.5px;letter-spacing:-.01em;}
+.brand-text .t2{font-size:11px;color:var(--text-secondary);}
+
+.nav-group{margin-bottom:18px;}
+.nav-label{font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.06em;padding:0 10px;margin-bottom:6px;}
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 10px;border-radius:9px;
+  font-size:13.5px;font-weight:500;color:var(--text);
+  cursor:pointer;user-select:none;margin-bottom:2px;
+  transition:background .12s ease;
+}
+.nav-item:hover{background:var(--border-soft);}
+.nav-item.active{background:var(--text);color:#fff;}
+.nav-item .ic{width:18px;height:18px;flex:0 0 18px;display:flex;align-items:center;justify-content:center;}
+.nav-item .badge{
+  margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;
+  border-radius:20px;padding:1px 6px;min-width:16px;text-align:center;
+}
+.nav-item.active .badge{background:rgba(255,255,255,.25);}
+
+.sync-box{
+  margin-top:auto;padding:10px 10px;border-radius:12px;background:var(--surface);
+  border:1px solid var(--border);font-size:11.5px;color:var(--text-secondary);
+}
+.sync-row{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:0 0 7px;}
+.dot.bad{background:var(--red);}
+.dot.mid{background:var(--amber);}
+
+.main{flex:1;min-width:0;}
+.topbar{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;gap:14px;
+  padding:14px 28px;background:rgba(245,245,247,.82);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+}
+.page-title{font-family:var(--font-display);font-weight:700;font-size:20px;letter-spacing:-.02em;}
+.spacer{flex:1;}
+.pill-select{
+  appearance:none;background:var(--surface);border:1px solid var(--border);
+  padding:7px 30px 7px 12px;border-radius:20px;font-size:13px;font-weight:600;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%236E6E73'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center;
+}
+.identity-select{border-color:var(--border);}
+.nav-item.nav-link{text-decoration:none;display:flex;}
+.btn{
+  border:none;border-radius:20px;padding:8px 16px;font-size:13px;font-weight:600;
+  display:inline-flex;align-items:center;gap:6px;transition:transform .1s ease, opacity .12s ease;
+}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent-deep);}
+.btn-secondary{background:var(--surface);border:1px solid var(--border);color:var(--text);}
+.btn-secondary:hover{background:var(--border-soft);}
+.btn-ghost{background:transparent;color:var(--blue);padding:8px 10px;}
+.btn-danger{background:var(--red-soft);color:var(--red);}
+.btn-sm{padding:5px 11px;font-size:12px;border-radius:16px;}
+
+.content{padding:22px 28px 60px;max-width:1360px;}
+.hidden{display:none !important;}
+
+/* ---------- Cards / grid ---------- */
+.grid{display:grid;gap:16px;}
+.grid-4{grid-template-columns:repeat(4,1fr);}
+.grid-3{grid-template-columns:repeat(3,1fr);}
+.grid-2{grid-template-columns:repeat(2,1fr);}
+@media (max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr);}.grid-3{grid-template-columns:repeat(2,1fr);}}
+
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:20px;box-shadow:var(--shadow-sm);
+}
+.card-lg{padding:26px;}
+.stat-label{font-size:12px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+.stat-value{font-family:var(--font-mono);font-size:30px;font-weight:600;letter-spacing:-.02em;}
+.stat-sub{font-size:12px;color:var(--text-tertiary);margin-top:6px;}
+.stat-value.pos{color:var(--green);}
+.stat-value.neg{color:var(--red);}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;}
+.chip.up{background:var(--green-soft);color:var(--green);}
+.chip.down{background:var(--red-soft);color:var(--red);}
+
+.section-head{display:flex;align-items:center;gap:10px;margin:30px 0 14px;}
+.section-head h2{font-family:var(--font-display);font-size:17px;font-weight:700;letter-spacing:-.01em;margin:0;}
+.section-head .hint{font-size:12.5px;color:var(--text-tertiary);}
+
+/* ---------- Rings (signature element) ---------- */
+.rings-wrap{display:flex;align-items:center;gap:26px;flex-wrap:wrap;}
+.rings-legend{display:flex;flex-direction:column;gap:10px;min-width:190px;}
+.legend-row{display:flex;align-items:center;gap:10px;font-size:13px;}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex:0 0 10px;}
+.legend-name{font-weight:600;flex:1;}
+.legend-amt{font-family:var(--font-mono);font-weight:600;}
+
+/* ---------- Tables ---------- */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{
+  text-align:left;font-size:11px;font-weight:700;color:var(--text-tertiary);
+  text-transform:uppercase;letter-spacing:.04em;padding:11px 14px;
+  background:var(--surface-alt);border-bottom:1px solid var(--border);white-space:nowrap;
+}
+tbody td{padding:10px 14px;border-bottom:1px solid var(--border-soft);white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:var(--surface-alt);}
+td.num,th.num{text-align:right;font-family:var(--font-mono);}
+tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px solid var(--border);}
+.tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:var(--border-soft);color:var(--text-secondary);}
+.tag.needs{background:var(--amber-soft);color:#B4690E;}
+.tag.cog{background:var(--blue-soft);color:var(--blue);}
+.row-actions{display:flex;gap:6px;}
+.icon-btn{border:none;background:transparent;color:var(--text-tertiary);padding:4px;border-radius:6px;}
+.icon-btn:hover{background:var(--red-soft);color:var(--red);}
+
+/* ---------- Tabs (months) ---------- */
+.tabs{display:flex;gap:4px;overflow-x:auto;padding-bottom:2px;margin-bottom:16px;}
+.tab{
+  padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;color:var(--text-secondary);
+  background:var(--surface);border:1px solid var(--border);white-space:nowrap;
+}
+.tab.active{background:var(--text);color:#fff;border-color:var(--text);}
+
+/* ---------- Forms / modal ---------- */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.32);backdrop-filter:blur(3px);
+  display:flex;align-items:flex-start;justify-content:center;padding:60px 20px;z-index:100;overflow-y:auto;
+}
+.modal{
+  background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
+  width:100%;max-width:560px;padding:26px;
+}
+.modal h3{margin:0 0 4px;font-family:var(--font-display);font-size:18px;}
+.modal p.sub{margin:0 0 18px;color:var(--text-secondary);font-size:13px;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;}
+.field input:not([type="checkbox"]):not([type="radio"]),.field select,.field textarea{
+  width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:13.5px;
+  background:var(--surface-alt);color:var(--text);
+}
+.field input[type="checkbox"],.field input[type="radio"]{width:auto;flex:0 0 auto;accent-color:var(--accent);}
+.field input[type="file"]{width:100%;padding:8px 10px;border:1px dashed var(--border);border-radius:10px;background:var(--surface-alt);font-size:12.5px;}
+.field label.checkbox-label{display:flex;align-items:center;gap:8px;font-weight:500;color:var(--text);}
+.field textarea{resize:vertical;min-height:60px;}
+.field-row{display:flex;gap:12px;}
+.field-row .field{flex:1;}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;}
+
+/* ---------- Upload dropzone ---------- */
+.dropzone{
+  border:1.5px dashed var(--border);border-radius:var(--radius-lg);padding:36px 20px;
+  text-align:center;background:var(--surface-alt);cursor:pointer;transition:.15s;
+}
+.dropzone:hover,.dropzone.drag{border-color:var(--accent);background:var(--accent-soft);}
+.dropzone .ic{font-size:26px;margin-bottom:8px;}
+.dropzone .t{font-weight:600;font-size:14px;margin-bottom:2px;}
+.dropzone .s{font-size:12px;color:var(--text-tertiary);}
+
+.mapper-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0;}
+.mapper-row{display:flex;align-items:center;gap:8px;font-size:13px;}
+.mapper-row select{flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-alt);}
+
+.empty-state{padding:50px 20px;text-align:center;color:var(--text-tertiary);}
+.empty-state .ic{font-size:32px;margin-bottom:10px;}
+
+.doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;}
+.doc-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px;}
+.doc-thumb{
+  width:100%;height:90px;border-radius:8px;background:var(--surface-alt);
+  display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:10px;overflow:hidden;
+}
+.doc-thumb img{width:100%;height:100%;object-fit:cover;}
+.doc-name{font-weight:600;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.doc-meta{font-size:11px;color:var(--text-tertiary);margin-top:2px;}
+
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--text);color:#fff;padding:11px 18px;border-radius:30px;font-size:13px;font-weight:500;
+  box-shadow:var(--shadow-lg);z-index:200;opacity:0;pointer-events:none;transition:opacity .2s, transform .2s;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+.banner{
+  background:var(--amber-soft);border:1px solid #F5D9A8;color:#8A5A0A;border-radius:var(--radius-md);
+  padding:12px 16px;font-size:12.5px;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start;
+}
+.banner b{font-weight:700;}
+.banner.blue{background:var(--blue-soft);border-color:#BEDCFB;color:#0B4E8C;}
+
+@media (max-width: 860px){
+  .sidebar{position:fixed;left:-260px;transition:left .2s;z-index:50;box-shadow:var(--shadow-lg);}
+  .sidebar.open{left:0;}
+  .content{padding:16px;}
+  .grid-4,.grid-3,.grid-2{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">PL</div>
+      <div class="brand-text">
+        <div class="t1">PLS HQ</div>
+        <div class="t2">Pack Life Store</div>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">PLS HQ</div>
+      <a class="nav-item nav-link" href="hub.html"><span class="ic">◈</span>Dashboard</a>
+      <a class="nav-item nav-link active" href="index_2.html"><span class="ic">💰</span>Finances</a>
+      <a class="nav-item nav-link" href="PUMA_to_WIX_Converter.html"><span class="ic">⇄</span>PUMA → WIX Converter</a>
+      <a class="nav-item nav-link" href="daily-updates.html"><span class="ic">📋</span>Daily Updates</a>
+      <a class="nav-item nav-link" href="social-media.html"><span class="ic">📣</span>Social Media</a>
+      <a class="nav-item nav-link" href="contacts.html"><span class="ic">☎</span>Contacts</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Finances</div>
+      <div class="nav-item active" data-page="dashboard"><span class="ic">◈</span>Finance Overview</div>
+      <div class="nav-item" data-page="settlement"><span class="ic">⇄</span>Payments & Settlement</div>
+      <div class="nav-item" data-page="distribution"><span class="ic">◔</span>Distribution</div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Journal</div>
+      <div class="nav-item" data-page="orders"><span class="ic">▤</span>Orders</div>
+      <div class="nav-item" data-page="suppliers"><span class="ic">🏷</span>Supplier Payments</div>
+      <div class="nav-item" data-page="transactions"><span class="ic">▥</span>Transactions</div>
+      <div class="nav-item" data-page="review"><span class="ic">◑</span>Needs Review<span class="badge hidden" id="reviewBadge">0</span></div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Files</div>
+      <div class="nav-item" data-page="upload"><span class="ic">⇧</span>Upload Center</div>
+      <div class="nav-item" data-page="vault"><span class="ic">▢</span>Document Vault</div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Workspace</div>
+      <div class="nav-item" data-page="settings"><span class="ic">⚙</span>Settings</div>
+    </div>
+
+    <div class="sync-box" id="syncBox">
+      <div class="sync-row"><span class="dot mid" id="syncDot"></span><span id="syncText">Connecting…</span></div>
+      <div id="syncSub">JSONBin not configured</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <button class="btn-ghost" id="menuBtn" style="display:none;font-size:18px;">☰</button>
+      <div class="page-title" id="pageTitle">Finance Overview</div>
+      <div class="spacer"></div>
+      <select class="pill-select identity-select" id="identitySelect" title="Who's working right now?">
+        <option value="">I am…</option>
+      </select>
+      <select class="pill-select" id="monthSelect"></select>
+    </div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   PLS HQ — application script
+   Single-file app. Data lives in a JSONBin.io bin (shared by the
+   whole team). Configure CONFIG below before publishing to
+   GitHub Pages. See the accompanying SETUP.md for instructions.
+   ============================================================ */
+
+const CONFIG = {
+  // 1. Create a free bin at https://jsonbin.io (see SETUP.md)
+  // 2. Paste your Bin ID and X-Master-Key below
+  JSONBIN_BIN_ID: "6a71c7b6f5f4af5e29e95911",
+  JSONBIN_API_KEY: "$2a$10$TckKi6ppJW2MOaBYNYg5xe.MpVd/D0bby8ovrw2uO1X5xhJ5ba94S",
+  JSONBIN_BASE: "https://api.jsonbin.io/v3/b/"
+};
+if(window.pdfjsLib){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+}
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DEFAULT_CATEGORIES = ["Advertising","Packaging","Printing","Courier","Domains","Software","Banking","Rent","Salaries/Wages","Misc"];
+const PARTNERS = ["Riccardo","Anna"]; // profit-sharing shareholders only
+const TEAM = ["Riccardo","Anna","Chris"]; // everyone who can be tagged as having added an entry
+const PARTNER_COLORS = {Riccardo:"var(--ric)", Anna:"var(--anna)", Chris:"var(--chris)"};
+const PAYMENT_METHODS = ["EFT","Yoco","Ikhoka","Payflex"];
+const PAYFLEX_HOLDER = "Chris"; // Payflex payouts go straight to Chris, not the central account
+
+let DB = null;         // in-memory copy of the whole dataset
+let currentUser = "";  // session-only identity (not persisted — see Settings)
+let page = "dashboard";
+let selectedMonth = MONTHS[new Date().getMonth()];
+let syncState = "connecting"; // connecting | ok | offline | unconfigured
+
+const emptyDB = () => ({
+  meta:{ categories:[...DEFAULT_CATEGORIES], adReservePct:0.20, partners:[...PARTNERS], splitPercents:{Riccardo:0.40, Anna:0.40}, updatedAt:null,
+         centralCollector:"Riccardo", chrisFrontsSuppliers:true, docFolders:["General"] },
+  orders:[], transactions:[], documents:[], ticketSales:[], reviewQueue:[], skuMap:[], payouts:[]
+});
+
+/* ---------------- persistence layer ---------------- */
+const jsonbinConfigured = () =>
+  CONFIG.JSONBIN_BIN_ID && !CONFIG.JSONBIN_BIN_ID.startsWith("PASTE_") &&
+  CONFIG.JSONBIN_API_KEY && !CONFIG.JSONBIN_API_KEY.startsWith("PASTE_");
+
+function migrateChrisOwnershipChange(){
+  // Chris stepped down as a shareholder. This runs on every load and self-heals — it never
+  // trusts a stored "already migrated" flag on its own, since a partial/older deploy could
+  // have set that flag without actually finishing the fix. Safe to run repeatedly: it's a
+  // no-op once the data already matches, and only writes back if something actually changed.
+  let changed = false;
+  if(!Array.isArray(DB.meta.partners) || !DB.meta.partners.length) DB.meta.partners = [...PARTNERS];
+  if(DB.meta.partners.includes("Chris")){
+    DB.meta.partners = DB.meta.partners.filter(p=>p!=="Chris");
+    if(!DB.meta.partners.length) DB.meta.partners = [...PARTNERS];
+    changed = true;
+  }
+  if(!DB.meta.splitPercents || typeof DB.meta.splitPercents!=="object") DB.meta.splitPercents = {};
+  Object.keys(DB.meta.splitPercents).forEach(k=>{
+    if(!DB.meta.partners.includes(k)){ delete DB.meta.splitPercents[k]; changed = true; }
+  });
+  DB.meta.partners.forEach(p=>{
+    if(DB.meta.splitPercents[p]==null){
+      DB.meta.splitPercents[p] = Math.round(((1-DB.meta.adReservePct)/DB.meta.partners.length)*100)/100;
+      changed = true;
+    }
+  });
+  // Old default reserve was 10% before this change — bump it once, tracked so a later
+  // deliberate edit in Settings never gets silently overwritten again.
+  if(!DB.meta.chrisRemovedFromSplit){
+    DB.meta.adReservePct = 0.20;
+    DB.meta.chrisRemovedFromSplit = true;
+    changed = true;
+  }
+  if(changed) saveDB(false);
+}
+async function loadDB(){
+  if(!jsonbinConfigured()){
+    syncState = "unconfigured";
+    DB = emptyDB();
+    updateSyncBox();
+    return;
+  }
+  try{
+    const res = await fetch(CONFIG.JSONBIN_BASE + CONFIG.JSONBIN_BIN_ID + "/latest", {
+      headers:{ "X-Master-Key": CONFIG.JSONBIN_API_KEY }
+    });
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const json = await res.json();
+    DB = json.record && json.record.meta ? json.record : emptyDB();
+    // backfill any new fields for older bins
+    DB.meta = Object.assign(emptyDB().meta, DB.meta||{});
+    ["orders","transactions","documents","ticketSales","reviewQueue","skuMap","payouts"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
+    migrateChrisOwnershipChange();
+    syncState = "ok";
+  }catch(e){
+    console.error(e);
+    DB = DB || emptyDB();
+    syncState = "offline";
+  }
+  updateSyncBox();
+}
+
+let retryTimer=null;
+let pendingSince=null; // timestamp of the oldest change not yet confirmed saved
+async function saveDB(showToast, attempt){
+  attempt = attempt||0;
+  DB.meta.updatedAt = new Date().toISOString();
+  if(!pendingSince) pendingSince = Date.now();
+  if(!jsonbinConfigured()){
+    syncState="unconfigured"; updateSyncBox();
+    if(showToast) toast("Not saved — JSONBin isn't configured yet (see Settings)");
+    return;
+  }
+  syncState = attempt>0? "retrying" : "saving";
+  updateSyncBox();
+  try{
+    const res = await fetch(CONFIG.JSONBIN_BASE + CONFIG.JSONBIN_BIN_ID, {
+      method:"PUT",
+      headers:{ "Content-Type":"application/json", "X-Master-Key": CONFIG.JSONBIN_API_KEY },
+      body: JSON.stringify(DB)
+    });
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    syncState="ok";
+    pendingSince=null;
+    clearTimeout(retryTimer);
+    if(showToast) toast("Saved to PLS HQ ✓");
+  }catch(e){
+    console.error(e);
+    syncState="offline";
+    if(showToast) toast(attempt===0? "Couldn't reach JSONBin — your change is on this screen and will keep trying to sync" : "Still offline — will keep retrying in the background");
+    clearTimeout(retryTimer);
+    const delay = Math.min(4000*(attempt+1), 20000);
+    retryTimer = setTimeout(()=>saveDB(false, attempt+1), delay);
+  }
+  updateSyncBox();
+}
+
+function updateSyncBox(){
+  const dot=document.getElementById("syncDot"), text=document.getElementById("syncText"), sub=document.getElementById("syncSub");
+  if(syncState==="ok"){ dot.className="dot"; text.textContent="Synced with team"; sub.textContent="Last update "+ (DB.meta.updatedAt? new Date(DB.meta.updatedAt).toLocaleString() : "just now"); }
+  else if(syncState==="connecting"){ dot.className="dot mid"; text.textContent="Connecting…"; sub.textContent="Reaching JSONBin"; }
+  else if(syncState==="saving"){ dot.className="dot mid"; text.textContent="Saving…"; sub.textContent="Pushing your change to the team"; }
+  else if(syncState==="retrying"){ dot.className="dot bad"; text.textContent="Retrying sync…"; sub.textContent="Your change is safe on this screen"; }
+  else if(syncState==="offline"){ dot.className="dot bad"; text.textContent="Not synced yet"; sub.textContent="Visible here, still trying to reach the team copy"; }
+  else{ dot.className="dot bad"; text.textContent="Not configured"; sub.textContent="Add JSONBin keys in Settings"; }
+}
+
+/* ---------------- helpers ---------------- */
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const R = n => "R "+ (Number(n)||0).toLocaleString("en-ZA",{minimumFractionDigits:2,maximumFractionDigits:2});
+const pct = n => ((Number(n)||0)*100).toFixed(1)+"%";
+function toast(msg){
+  const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"), 2600);
+}
+function monthOf(dateStr){
+  if(!dateStr) return null;
+  const d = new Date(dateStr);
+  if(isNaN(d)) return null;
+  return MONTHS[d.getMonth()];
+}
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function supplierGroup(order){
+  if(order.supplier && order.supplier.trim()) return order.supplier.trim();
+  return /puma/i.test(order.product||"") ? "PUMA" : "Other";
+}
+
+/* ---------------- computed figures ---------------- */
+function ordersForMonth(m){ return DB.orders.filter(o=>o.month===m); }
+function txForMonth(m){ return DB.transactions.filter(t=>monthOf(t.date)===m); }
+function ticketsForMonth(m){ return DB.ticketSales.filter(t=>monthOf(t.date)===m); }
+
+function monthFigures(m){
+  const ords = ordersForMonth(m);
+  const revenue = ords.reduce((s,o)=>s+(Number(o.costToClient)||0),0);
+  const cogs = ords.reduce((s,o)=>s+(Number(o.costSupplier)||0),0);
+  const grossProfit = revenue - cogs;
+  const txs = txForMonth(m).filter(t=>t.type==="Expense");
+  const totalExpenses = txs.reduce((s,t)=>s+(Number(t.amount)||0),0);
+  const byCategory = {};
+  txs.forEach(t=>{ byCategory[t.category||"Uncategorized"] = (byCategory[t.category||"Uncategorized"]||0) + Number(t.amount||0); });
+  const netProfit = grossProfit - totalExpenses;
+  const adReserve = Math.max(netProfit,0) * DB.meta.adReservePct;
+  const distributable = netProfit - adReserve;
+  // Split between shareholders (Riccardo/Anna) by their configured percentage of distributable profit.
+  // Chris is no longer a shareholder — he isn't part of this split at all.
+  const split = {};
+  DB.meta.partners.forEach(p=>{
+    const pct = (DB.meta.splitPercents && DB.meta.splitPercents[p]!=null) ? DB.meta.splitPercents[p] : (1/DB.meta.partners.length);
+    split[p] = distributable * pct;
+  });
+  // Ticket sales (Pack Life Gym events) remain Chris's own separate income — not part of the PLS profit split.
+  const ticketProfit = ticketsForMonth(m).reduce((s,t)=>s+((Number(t.costToClient)||0)-(Number(t.yocoFees)||0)),0);
+  const margin = revenue? netProfit/revenue : 0;
+  return {revenue,cogs,grossProfit,totalExpenses,byCategory,netProfit,adReserve,distributable,ticketProfit,split,margin};
+}
+function settlementForMonth(m){
+  const ords = ordersForMonth(m);
+  const payflexIn = ords.filter(o=>o.paymentMethod==="Payflex").reduce((s,o)=>s+(+o.costToClient||0),0);
+  const centralIn = ords.filter(o=>o.paymentMethod!=="Payflex").reduce((s,o)=>s+(+o.costToClient||0),0);
+  const supplierOwedToChris = DB.meta.chrisFrontsSuppliers ? ords.reduce((s,o)=>s+(+o.costSupplier||0),0) : 0;
+  // Positive payflexNet = Chris is sitting on more Payflex cash than he spent on suppliers (a surplus he's holding).
+  // Negative payflexNet = Payflex didn't cover what he paid suppliers — the business still owes him the gap.
+  const payflexNet = payflexIn - supplierOwedToChris;
+  const f = monthFigures(m);
+  // Chris has no profit share — this is purely a supplier-cost pass-through/settlement.
+  // If Chris is holding a Payflex surplus, he owes the business that amount (negative transfer = he owes).
+  // If Payflex fell short of what he paid suppliers, the business sends him the shortfall.
+  const transferToChris = -payflexNet;
+  return { payflexIn, centralIn, supplierOwedToChris, payflexNet, transferToChris, ...f };
+}
+function yearFigures(){
+  const totals = {revenue:0,cogs:0,grossProfit:0,totalExpenses:0,netProfit:0,adReserve:0,distributable:0,ticketProfit:0,chrisSettlement:0,split:{}};
+  DB.meta.partners.forEach(p=>totals.split[p]=0);
+  MONTHS.forEach(m=>{
+    const f=monthFigures(m);
+    const s=settlementForMonth(m);
+    totals.revenue+=f.revenue; totals.cogs+=f.cogs; totals.grossProfit+=f.grossProfit;
+    totals.totalExpenses+=f.totalExpenses; totals.netProfit+=f.netProfit; totals.adReserve+=f.adReserve;
+    totals.distributable+=f.distributable; totals.ticketProfit+=f.ticketProfit;
+    totals.chrisSettlement+=s.transferToChris;
+    DB.meta.partners.forEach(p=>{ totals.split[p]+=f.split[p]||0; });
+  });
+  totals.margin = totals.revenue? totals.netProfit/totals.revenue : 0;
+  return totals;
+}
+function refreshReviewBadge(){
+  const n = DB.reviewQueue.length;
+  const b = document.getElementById("reviewBadge");
+  if(n>0){ b.textContent=n; b.classList.remove("hidden"); } else b.classList.add("hidden");
+}
+
+/* ============================================================
+   RENDERERS
+   ============================================================ */
+function renderRings(split, size=150){
+  const parts = DB.meta.partners.map(p=>({name:p, val:Math.max(split[p]||0,0), color:PARTNER_COLORS[p]||"var(--text)"}));
+  const max = Math.max(...parts.map(p=>p.val), 1);
+  const r0=size*0.46, stroke=size*0.1, gap=stroke*1.35;
+  let svg = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
+  parts.forEach((p,i)=>{
+    const r = r0 - i*gap;
+    const c = 2*Math.PI*r;
+    const frac = Math.min(p.val/max,1);
+    const dash = c*frac;
+    svg += `<circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--border-soft)" stroke-width="${stroke}"/>`;
+    svg += `<circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${p.color}" stroke-width="${stroke}"
+      stroke-linecap="round" stroke-dasharray="${dash} ${c}" transform="rotate(-90 ${size/2} ${size/2})"
+      style="transition:stroke-dasharray .8s cubic-bezier(.4,0,.2,1)"/>`;
+  });
+  svg += `</svg>`;
+  return svg;
+}
+
+/* ---------- Supplier Payments ---------- */
+async function extractPdfText(file){
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+  let text = "";
+  for(let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    let lastY = null, line = "";
+    content.items.forEach(item=>{
+      const y = item.transform[5];
+      if(lastY!==null && Math.abs(y-lastY)>2){
+        text += line.trim() + "\n";
+        line = "";
+      }
+      line += item.str + " ";
+      lastY = y;
+    });
+    if(line.trim()) text += line.trim() + "\n";
+    text += "\n";
+  }
+  return text;
+}
+function guessSkuCostFromText(text){
+  // Best-effort: look for every SKU we already know about (from existing orders)
+  // appearing in the extracted text, then grab the nearest price-looking number after it.
+  const knownSkus = [...new Set(DB.orders.map(o=>(o.sku||"").trim()).filter(Boolean))];
+  const lines = [];
+  const foundSkus = new Set();
+  knownSkus.forEach(sku=>{
+    const idx = text.indexOf(sku);
+    if(idx===-1) return;
+    const window_ = text.slice(idx, idx+120);
+    const m = window_.match(/(?:R\s?)?([0-9][0-9,]*\.\d{2})/g);
+    if(m && m.length){
+      const cost = parseFloat(m[0].replace(/[^0-9.]/g,""));
+      lines.push(`${sku}, ${cost}`);
+      foundSkus.add(sku);
+    }
+  });
+  return {lines, matchedCount: foundSkus.size, rawText: text};
+}
+async function handleSupplierPdf(file){
+  toast("Reading PDF…");
+  try{
+    const text = await extractPdfText(file);
+    const {lines, matchedCount} = guessSkuCostFromText(text);
+    const box = document.getElementById("skuPaste");
+    if(lines.length){
+      box.value = lines.join("\n");
+      toast(`Found ${matchedCount} SKU${matchedCount===1?'':'s'} we recognise in the PDF — check the numbers, then click Match`);
+    } else {
+      box.value = text.slice(0,2000);
+      toast("Couldn't spot any known SKUs automatically — pasted the raw PDF text below, tidy it into \"SKU, cost\" lines and click Match");
+    }
+    const attach = document.getElementById("attachInvoiceDoc");
+    if(attach) attach.checked = true;
+    window._pendingSupplierFile = file;
+  }catch(e){
+    console.error(e);
+    toast("Couldn't read that PDF — try pasting the SKU and cost numbers in manually");
+  }
+}
+
+function skuIndex(){
+  const idx = {};
+  DB.orders.forEach(o=>{
+    if(!o.sku) return;
+    const k = o.sku.trim().toLowerCase();
+    (idx[k] = idx[k]||[]).push(o);
+  });
+  return idx;
+}
+function findOrdersForSupplierSku(supplierSku){
+  const key = (supplierSku||"").trim().toLowerCase();
+  if(!key) return {orders:[], via:"none"};
+  const idx = skuIndex();
+  // 1. exact match on our own SKU
+  if(idx[key]) return {orders:idx[key], via:"exact"};
+  // 2. explicit alias table (Supplier SKU -> our SKU), for when the codes don't share a prefix at all
+  const aliases = DB.skuMap.filter(m=>(m.supplierSku||"").trim().toLowerCase()===key);
+  if(aliases.length){
+    let matched = [];
+    aliases.forEach(a=>{
+      const ourKey = (a.ourSku||"").trim().toLowerCase();
+      if(idx[ourKey]) matched = matched.concat(idx[ourKey]);
+    });
+    if(matched.length) return {orders:matched, via:"alias"};
+  }
+  // 3. prefix fallback — e.g. supplier SKU "12345-01" vs our SKU "12345-01-L" (size/variant suffix)
+  if(key.length>=4){
+    const matched = DB.orders.filter(o=>o.sku && o.sku.trim().toLowerCase().startsWith(key) && o.sku.trim().toLowerCase()!==key);
+    if(matched.length) return {orders:matched, via:"prefix"};
+  }
+  return {orders:[], via:"none"};
+}
+function applySupplierCosts(pairs){
+  const unmatched = [];
+  let prefixCount=0, aliasCount=0;
+  const fillQty = (o,p)=>{ if(p.qty && (!o.qty || o.qty===1)) o.qty = p.qty; };
+  const fillOrderNo = (o,p)=>{ if(p.supplierOrderNo) o.supplierOrderNo = p.supplierOrderNo; };
+  pairs.forEach(p=>{
+    if(!(p.sku||"").trim()) return;
+    const {orders, via} = findOrdersForSupplierSku(p.sku);
+    if(!orders.length){ unmatched.push(p); return; }
+    if(via==="exact"){
+      const target = orders.find(o=>!o.costSupplier) || orders[0];
+      target.costSupplier = p.cost;
+      if(p.supplierName) target.supplier = p.supplierName;
+      fillQty(target, p);
+      fillOrderNo(target, p);
+    } else {
+      // alias / prefix matches can hit several size/variant rows at once — apply to the ones still unresolved
+      const targets = orders.filter(o=>!o.costSupplier);
+      const toUpdate = targets.length? targets : orders;
+      toUpdate.forEach(o=>{
+        o.costSupplier = p.cost;
+        if(p.supplierName) o.supplier = p.supplierName;
+        fillQty(o, p);
+        fillOrderNo(o, p);
+      });
+      if(via==="prefix") prefixCount += toUpdate.length; else aliasCount += toUpdate.length;
+    }
+  });
+  return {unmatched, prefixCount, aliasCount};
+}
+function parsePastedPairs(text){
+  return text.split(/\n+/).map(l=>l.trim()).filter(Boolean).map(l=>{
+    const parts = l.split(",").map(s=>s.trim());
+    const sku = parts[0]||"";
+    const cost = parts[1]!==undefined? parseFloat(parts[1].replace(/[^0-9.\-]/g,"")) : NaN;
+    const qty = parts[2]!==undefined? (parseInt(parts[2].replace(/[^0-9\-]/g,""))||1) : 1;
+    return {sku, cost:isNaN(cost)?0:cost, qty};
+  }).filter(p=>p.sku);
+}
+function attachSupplierDocIfRequested(matchedCount, totalCount, cb){
+  const attach = document.getElementById("attachInvoiceDoc");
+  const f = window._pendingSupplierFile;
+  if(!(attach && attach.checked && f)){ cb(); return; }
+  const note = `Matched ${matchedCount}/${totalCount} SKUs`;
+  if(f.size<45000){
+    const reader = new FileReader();
+    reader.onload = e=>{
+      DB.documents.push({id:uid(), name:`Supplier invoice — ${f.name}`, category:"Supplier Invoice", month:selectedMonth,
+        note, dataUrl:e.target.result, fileType:f.type, addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
+      cb();
+    };
+    reader.readAsDataURL(f);
+  } else {
+    DB.documents.push({id:uid(), name:`Supplier invoice — ${f.name}`, category:"Supplier Invoice", month:selectedMonth,
+      note: note+" — file too large to store here, keep the original safe", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
+    cb();
+  }
+}
+function matchPastedSkus(){
+  const text = val("skuPaste");
+  const supplierName = val("skuSupplierName").trim();
+  const pairs = parsePastedPairs(text).map(p=>{
+    const hasQty = p.qty && p.qty>1;
+    const cost = hasQty? Math.round(p.cost*p.qty*100)/100 : p.cost;
+    const unitPrice = p.cost;
+    return {...p, cost, unitPrice, supplierName};
+  });
+  if(!pairs.length){ toast("Nothing to match — paste SKU and cost first, one per line"); return; }
+  const {unmatched, prefixCount, aliasCount} = applySupplierCosts(pairs);
+  attachSupplierDocIfRequested(pairs.length-unmatched.length, pairs.length, ()=>{
+    saveDB(true); render();
+    toast(matchSummaryText(pairs.length, unmatched.length, prefixCount, aliasCount));
+  });
+}
+function matchSummaryText(total, unmatchedCount, prefixCount, aliasCount){
+  const matched = total-unmatchedCount;
+  let msg = unmatchedCount? `Matched ${matched} of ${total} — ${unmatchedCount} SKU(s) not found in Orders` : `Matched all ${total} SKUs`;
+  const extras = [];
+  if(prefixCount) extras.push(`${prefixCount} via size/variant prefix`);
+  if(aliasCount) extras.push(`${aliasCount} via saved SKU mapping`);
+  if(extras.length) msg += ` (${extras.join(", ")})`;
+  return msg;
+}
+let supplierParsedRows=[], supplierMapping={};
+function handleSupplierFile(file){
+  const name=file.name.toLowerCase();
+  if(name.endsWith(".pdf")){ handleSupplierPdf(file); return; }
+  const done=(headers,rows)=>startSupplierMapper(headers,rows,file);
+  if(name.endsWith(".csv")){
+    Papa.parse(file,{header:true,skipEmptyLines:true,complete:res=>done(res.meta.fields,res.data)});
+  } else {
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const wb=XLSX.read(e.target.result,{type:"array"});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const json=XLSX.utils.sheet_to_json(ws,{defval:""});
+      done(Object.keys(json[0]||{}), json);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+function startSupplierMapper(headers, rows, file){
+  supplierParsedRows = rows; supplierMapping = {};
+  headers.forEach(h=>{
+    const l=h.toLowerCase();
+    if(!supplierMapping.sku && /sku|article number/.test(l)) supplierMapping.sku=h;
+    if(!supplierMapping.cost && /net price|unit price|cost|price|amount/.test(l)) supplierMapping.cost=h;
+    if(!supplierMapping.qty && /qty|quantity/.test(l)) supplierMapping.qty=h;
+    if(!supplierMapping.orderNo && /order number|po number|order no/.test(l)) supplierMapping.orderNo=h;
+    if(!supplierMapping.supplier && /(supplier|brand|vendor)/.test(l)) supplierMapping.supplier=h;
+  });
+  window._pendingSupplierFile = file;
+  document.getElementById("supplierMapperHost").innerHTML = `
+    <div style="margin-top:14px;">
+      <div class="stat-label">Match the columns (${rows.length} rows)</div>
+      <div class="mapper-grid">
+        <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">SKU</span>
+          <select onchange="supplierMapping.sku=this.value"><option value="">— not in file —</option>${headers.map(h=>`<option value="${esc(h)}" ${supplierMapping.sku===h?"selected":""}>${esc(h)}</option>`).join("")}</select></div>
+        <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">Cost</span>
+          <select onchange="supplierMapping.cost=this.value"><option value="">— not in file —</option>${headers.map(h=>`<option value="${esc(h)}" ${supplierMapping.cost===h?"selected":""}>${esc(h)}</option>`).join("")}</select></div>
+        <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">Quantity (optional)</span>
+          <select onchange="supplierMapping.qty=this.value; updateSupplierCostHint();"><option value="">— not in file / always 1 —</option>${headers.map(h=>`<option value="${esc(h)}" ${supplierMapping.qty===h?"selected":""}>${esc(h)}</option>`).join("")}</select></div>
+        <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">Supplier order no (optional)</span>
+          <select onchange="supplierMapping.orderNo=this.value"><option value="">— not in file —</option>${headers.map(h=>`<option value="${esc(h)}" ${supplierMapping.orderNo===h?"selected":""}>${esc(h)}</option>`).join("")}</select></div>
+        <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">Supplier name</span>
+          <select onchange="supplierMapping.supplier=this.value"><option value="">— not in file —</option>${headers.map(h=>`<option value="${esc(h)}" ${supplierMapping.supplier===h?"selected":""}>${esc(h)}</option>`).join("")}</select></div>
+      </div>
+      <p class="hint" id="supplierCostHint" style="margin:6px 0 14px;"></p>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('supplierMapperHost').innerHTML=''">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="confirmSupplierImport()">Match ${rows.length} rows</button>
+      </div>
+    </div>
+  `;
+  updateSupplierCostHint();
+}
+function updateSupplierCostHint(){
+  const el = document.getElementById("supplierCostHint");
+  if(!el) return;
+  el.innerHTML = supplierMapping.qty
+    ? "A Quantity column is mapped, so Cost will be treated as <b>per unit</b> and multiplied by Quantity automatically."
+    : "No Quantity column mapped — Cost will be used exactly as-is (as the line total).";
+}
+function confirmSupplierImport(){
+  if(!supplierMapping.sku || !supplierMapping.cost){ toast("Map at least SKU and Cost first"); return; }
+  const pairs = supplierParsedRows.map(row=>{
+    const unitOrTotal = parseFloat(String(row[supplierMapping.cost]||"0").replace(/[^0-9.\-]/g,""))||0;
+    const hasQtyCol = !!supplierMapping.qty;
+    const qty = hasQtyCol? (parseInt(String(row[supplierMapping.qty]||"1").replace(/[^0-9\-]/g,""))||1) : 1;
+    return {
+      sku: row[supplierMapping.sku],
+      cost: hasQtyCol? Math.round(unitOrTotal*qty*100)/100 : unitOrTotal,
+      unitPrice: unitOrTotal,
+      qty,
+      supplierOrderNo: supplierMapping.orderNo? String(row[supplierMapping.orderNo]||"").trim() : "",
+      supplierName: supplierMapping.supplier? row[supplierMapping.supplier] : val("skuSupplierName").trim()
+    };
+  }).filter(p=>p.sku);
+  const {unmatched, prefixCount, aliasCount} = applySupplierCosts(pairs);
+  attachSupplierDocIfRequested(pairs.length-unmatched.length, pairs.length, ()=>{
+    document.getElementById("supplierMapperHost").innerHTML="";
+    saveDB(true);
+    toast(matchSummaryText(pairs.length, unmatched.length, prefixCount, aliasCount));
+    render();
+  });
+}
+function toggleSupplierPaid(id){
+  const o = DB.orders.find(x=>x.id===id);
+  if(!o) return;
+  o.supplierPaid = !o.supplierPaid;
+  saveDB(true); render();
+}
+function renderSuppliers(){
+  pageHeader("Supplier Payments");
+  const ords = ordersForMonth(selectedMonth);
+  const groups = {};
+  ords.forEach(o=>{
+    const g = supplierGroup(o);
+    if(!groups[g]) groups[g] = {outstanding:0, paid:0, orders:[]};
+    groups[g].orders.push(o);
+    if(o.supplierPaid) groups[g].paid += (+o.costSupplier||0);
+    else groups[g].outstanding += (+o.costSupplier||0);
+  });
+  const groupNames = Object.keys(groups).sort((a,b)=> a==='PUMA'?-1 : b==='PUMA'?1 : a.localeCompare(b));
+  const colClass = groupNames.length>=3? "grid-3" : groupNames.length===2? "grid-2" : "grid-3";
+
+  document.getElementById("content").innerHTML = `
+    ${monthTabsHTML()}
+    <div class="banner blue">Supplier is worked out automatically: any product with <b>PUMA</b> in the name is grouped under PUMA, everything else under <b>Other</b>. Set a specific supplier on an order (via the order form) to override this. This is what Chris pays out — separate from the profit split.</div>
+
+    <div class="grid ${colClass}">
+      ${groupNames.length? groupNames.map(g=>`
+        <div class="card">
+          <div class="stat-label">${esc(g)} — owed this month</div>
+          <div class="stat-value ${groups[g].outstanding>0?'neg':''}">${R(groups[g].outstanding)}</div>
+          <div class="stat-sub">${R(groups[g].paid)} already paid · ${groups[g].orders.length} order${groups[g].orders.length===1?'':'s'}</div>
+        </div>`).join("") : `<div class="card" style="grid-column:1/-1;"><div class="empty-state">No orders logged for ${selectedMonth} yet</div></div>`}
+    </div>
+
+    ${groupNames.map(g=>`
+      <div class="section-head"><h2>${esc(g)}</h2></div>
+      <div class="table-wrap" style="margin-bottom:20px;">
+        <table>
+          <thead><tr><th>Order No</th><th>Date</th><th>Product</th><th>SKU</th><th class="num">Owed</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${groups[g].orders.map(o=>`
+              <tr>
+                <td>${esc(o.orderNo||"—")}</td>
+                <td>${o.date? new Date(o.date).toLocaleDateString('en-ZA'):"—"}</td>
+                <td>${esc(o.product||"—")}</td>
+                <td>${esc(o.sku||"—")}</td>
+                <td class="num">${R(o.costSupplier)}</td>
+                <td>${o.supplierPaid? `<span class="tag" style="background:var(--green-soft);color:var(--green);">Paid</span>` : `<span class="tag needs">Outstanding</span>`}</td>
+                <td class="row-actions"><button class="btn btn-secondary btn-sm" onclick="toggleSupplierPaid('${o.id}')">${o.supplierPaid?'Mark unpaid':'Mark paid'}</button></td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    `).join("")}
+
+    <div class="section-head"><h2>Match a supplier invoice to your orders</h2><span class="hint">Fill in the supplier cost Wix doesn't know about, by SKU</span></div>
+    <div class="card card-lg">
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:0;">Upload the invoice from PUMA or another supplier — CSV, XLSX, or <b>PDF</b> — or just paste the numbers straight in below. This fills in the <b>Supplier Cost</b> on any order with a matching SKU automatically. PDFs are read automatically where possible: it looks for SKUs already in your Orders and the nearest price next to them, then lets you check the numbers before anything is applied — always double-check against the actual invoice before matching.</p>
+      <div class="field-row">
+        <div class="field">
+          <label>Paste SKU + cost — one per line ("SKU, cost" or "SKU, cost, qty")</label>
+          <textarea id="skuPaste" rows="5" placeholder="310790-05, 682.50&#10;705368-01, 195.00, 2"></textarea>
+          <p class="hint" style="margin:6px 0 0;">Add a 3rd number for quantity and PLS HQ treats the cost as <b>per unit</b>, multiplying it in automatically — e.g. "705368-01, 195.00, 2" becomes R390. Leave it off and the cost is used exactly as typed.</p>
+        </div>
+        <div class="field">
+          <label>Supplier name for these (optional)</label>
+          <input id="skuSupplierName" placeholder="e.g. PUMA">
+          <label style="margin-top:12px;">Or upload a file — CSV, XLSX or PDF</label>
+          <input type="file" id="supplierFile" accept=".csv,.xlsx,.xls,.pdf">
+          <label class="checkbox-label" style="margin-top:12px;">
+            <input type="checkbox" id="attachInvoiceDoc"> also file the uploaded sheet in the Document Vault
+          </label>
+        </div>
+      </div>
+      <div id="supplierMapperHost"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+        <button class="btn btn-primary btn-sm" onclick="matchPastedSkus()">Match pasted SKUs</button>
+      </div>
+    </div>
+
+    <div class="section-head"><h2>SKU mapping</h2><span class="hint">When a supplier's SKU doesn't look like ours</span></div>
+    <div class="card card-lg">
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:0;">
+        Most of the time you won't need this: if PUMA's code is <b>12345-01</b> and your store's SKU for that same item is
+        <b>12345-01-L</b> (with a size added on the end), matching already handles that automatically — it applies PUMA's
+        cost to every one of your SKUs that starts with their code. Add a mapping here only when a supplier's code
+        doesn't share any part of yours at all, so PLS HQ knows the two refer to the same product.
+      </p>
+      <div class="table-wrap" style="margin-bottom:14px;">
+        <table>
+          <thead><tr><th>Supplier SKU</th><th>Your SKU</th><th>Supplier</th><th></th></tr></thead>
+          <tbody>
+            ${DB.skuMap.length? DB.skuMap.map(m=>`
+              <tr>
+                <td>${esc(m.supplierSku)}</td>
+                <td>${esc(m.ourSku)}</td>
+                <td>${esc(m.supplier||"—")}</td>
+                <td class="row-actions"><button class="icon-btn" onclick="deleteRow('skuMap','${m.id}')">✕</button></td>
+              </tr>`).join("") : `<tr><td colspan="4"><div class="empty-state" style="padding:20px;">No manual mappings yet — most suppliers won't need one</div></td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Supplier SKU</label><input id="map_supplierSku" placeholder="e.g. 12345-01"></div>
+        <div class="field"><label>Your SKU</label><input id="map_ourSku" placeholder="e.g. 12345-01-L"></div>
+        <div class="field"><label>Supplier (optional)</label><input id="map_supplier" placeholder="e.g. PUMA"></div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="addSkuMapping()">+ Add mapping</button>
+    </div>
+  `;
+  document.getElementById("supplierFile").onchange = e=>{ if(e.target.files[0]) handleSupplierFile(e.target.files[0]); };
+}
+function addSkuMapping(){
+  const supplierSku = val("map_supplierSku").trim();
+  const ourSku = val("map_ourSku").trim();
+  const supplier = val("map_supplier").trim();
+  if(!supplierSku || !ourSku){ toast("Fill in both SKUs first"); return; }
+  DB.skuMap.push({id:uid(), supplierSku, ourSku, supplier});
+  saveDB(true); render();
+}
+
+function pageHeader(title){ document.getElementById("pageTitle").textContent = title; }
+
+function trendChart(){
+  const revs=[], exps=[], profs=[];
+  MONTHS.forEach(m=>{ const f=monthFigures(m); revs.push(f.revenue.toFixed(2)); exps.push((f.cogs+f.totalExpenses).toFixed(2)); profs.push(f.netProfit.toFixed(2)); });
+  return {revs,exps,profs};
+}
+
+function renderDashboard(){
+  pageHeader("Finance Overview");
+  const f = monthFigures(selectedMonth);
+  const s = settlementForMonth(selectedMonth);
+  const y = yearFigures();
+  const recent = [
+    ...DB.orders.map(o=>({t:o.date,k:"Order",d:`${o.product||"Item"} · ${o.supplier||""}`,a:o.costToClient,who:o.addedBy})),
+    ...DB.transactions.map(t=>({t:t.date,k:"Expense",d:`${t.category||"Uncategorized"} — ${t.subcategory||t.description||""}`,a:-t.amount,who:t.addedBy})),
+    ...DB.documents.map(d=>({t:d.addedAt,k:"Document",d:d.name,a:null,who:d.addedBy}))
+  ].filter(x=>x.t).sort((a,b)=> new Date(b.t)-new Date(a.t)).slice(0,8);
+
+  document.getElementById("content").innerHTML = `
+    <div class="grid grid-4">
+      <div class="card">
+        <div class="stat-label">Revenue · ${selectedMonth}</div>
+        <div class="stat-value">${R(f.revenue)}</div>
+        <div class="stat-sub">COGS ${R(f.cogs)} → gross profit ${R(f.grossProfit)}</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Total Expenses</div>
+        <div class="stat-value">${R(f.totalExpenses)}</div>
+        <div class="stat-sub">${Object.keys(f.byCategory).length} categories logged</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Net Profit</div>
+        <div class="stat-value ${f.netProfit>=0?'pos':'neg'}">${R(f.netProfit)}</div>
+        <div class="stat-sub">Margin ${pct(f.margin)}</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Marketing Reserve (10%)</div>
+        <div class="stat-value">${R(f.adReserve)}</div>
+        <div class="stat-sub">Set aside before the split</div>
+      </div>
+    </div>
+
+    <div class="section-head"><h2>Profit split — ${selectedMonth}</h2><span class="hint">${DB.meta.partners.map(p=>`${p} ${pct(DB.meta.splitPercents[p]||0)}`).join(" · ")} after a ${pct(DB.meta.adReservePct)} marketing reserve</span></div>
+    <div class="card card-lg">
+      <div class="rings-wrap">
+        ${renderRings(f.split,150)}
+        <div class="rings-legend">
+          ${DB.meta.partners.map(p=>`
+            <div class="legend-row">
+              <span class="legend-dot" style="background:${PARTNER_COLORS[p]}"></span>
+              <span class="legend-name">${p}</span>
+              <span class="legend-amt">${R(f.split[p])}</span>
+            </div>`).join("")}
+        </div>
+      </div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft);display:flex;justify-content:space-between;align-items:center;font-size:13px;">
+        <span style="color:var(--text-secondary);">Chris — not a shareholder; supplier/Payflex settlement only${f.ticketProfit? ` · gym tickets ${R(f.ticketProfit)} (his own income)`:""}</span>
+        <b style="font-family:var(--font-mono);color:${s.transferToChris<0?'var(--red)':'var(--text)'}">${s.transferToChris<0? `owes ${R(Math.abs(s.transferToChris))}` : R(s.transferToChris)}</b>
+      </div>
+    </div>
+
+    <div class="section-head"><h2>Year at a glance</h2><span class="hint">Revenue vs. expenses vs. net profit, Jan–Dec</span></div>
+    <div class="card card-lg"><canvas id="trendCanvas" height="90"></canvas></div>
+
+    <div class="grid grid-2" style="margin-top:16px;">
+      <div>
+        <div class="section-head" style="margin-top:0;"><h2>Full year profile</h2></div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft);"><span>Revenue</span><b class="stat" style="font-family:var(--font-mono)">${R(y.revenue)}</b></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft);"><span>Expenses (COGS + overheads)</span><b style="font-family:var(--font-mono)">${R(y.cogs+y.totalExpenses)}</b></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft);"><span>Net profit</span><b style="font-family:var(--font-mono)">${R(y.netProfit)}</b></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;"><span>Distributed to shareholders (Anna + Riccardo)</span><b style="font-family:var(--font-mono)">${R(y.distributable)}</b></div>
+        </div>
+      </div>
+      <div>
+        <div class="section-head" style="margin-top:0;"><h2>Recent activity</h2></div>
+        <div class="card" style="padding:8px 16px;">
+          ${recent.length? recent.map(r=>`
+            <div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border-soft);font-size:13px;">
+              <span class="tag">${r.k}</span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.d)}</span>
+              ${r.a!=null?`<span style="font-family:var(--font-mono);color:${r.a<0?'var(--red)':'var(--text)'}">${r.a<0?'-':''}${R(Math.abs(r.a))}</span>`:''}
+            </div>`).join(""): `<div class="empty-state"><div class="ic">◌</div>Nothing logged yet</div>`}
+        </div>
+      </div>
+    </div>
+  `;
+  const {revs,exps,profs}=trendChart();
+  new Chart(document.getElementById("trendCanvas"),{
+    type:"line",
+    data:{labels:MONTHS,datasets:[
+      {label:"Revenue",data:revs,borderColor:"#0071E3",backgroundColor:"rgba(0,113,227,.08)",tension:.35,fill:true,pointRadius:2},
+      {label:"Expenses",data:exps,borderColor:"#FF3B30",backgroundColor:"rgba(255,59,48,.06)",tension:.35,fill:true,pointRadius:2},
+      {label:"Net Profit",data:profs,borderColor:"#2FA84F",backgroundColor:"rgba(47,168,79,.08)",tension:.35,fill:true,pointRadius:2}
+    ]},
+    options:{plugins:{legend:{position:"bottom",labels:{boxWidth:8,usePointStyle:true,font:{size:11}}}},
+      scales:{y:{ticks:{callback:v=>"R"+v/1000+"k"},grid:{color:"#EEEEF1"}},x:{grid:{display:false}}}}
+  });
+}
+
+let selection = { orders: new Set(), transactions: new Set() };
+function clearSelection(){ selection.orders.clear(); selection.transactions.clear(); }
+function toggleSelect(collection, id, checked){
+  if(checked) selection[collection].add(id); else selection[collection].delete(id);
+  render();
+}
+function toggleSelectAll(collection, ids, checked){
+  if(checked) ids.forEach(id=>selection[collection].add(id));
+  else ids.forEach(id=>selection[collection].delete(id));
+  render();
+}
+function bulkDelete(collection){
+  const ids = selection[collection];
+  if(!ids.size) return;
+  const label = collection==='orders'? 'order':'transaction';
+  if(!confirm(`Delete ${ids.size} selected ${label}${ids.size===1?'':'s'}? This can't be undone.`)) return;
+  DB[collection] = DB[collection].filter(r=>!ids.has(r.id));
+  ids.clear();
+  saveDB(true); render();
+}
+function bulkBarHTML(collection){
+  const n = selection[collection].size;
+  if(!n) return "";
+  const label = collection==='orders'? 'order':'transaction';
+  return `<div class="banner blue" style="display:flex;justify-content:space-between;align-items:center;">
+    <span><b>${n}</b> ${label}${n===1?'':'s'} selected</span>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary btn-sm" onclick="selection.${collection}.clear();render();">Clear selection</button>
+      <button class="btn btn-danger btn-sm" onclick="bulkDelete('${collection}')">Delete selected</button>
+    </div>
+  </div>`;
+}
+function renderOrders(){
+  pageHeader("Orders");
+  const ords = ordersForMonth(selectedMonth);
+  const totalC = ords.reduce((s,o)=>s+(+o.costToClient||0),0);
+  const totalS = ords.reduce((s,o)=>s+(+o.costSupplier||0),0);
+  document.getElementById("content").innerHTML = `
+    ${monthTabsHTML()}
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;">
+      <button class="btn btn-secondary btn-sm" onclick="page='upload';render();">⇧ Upload Wix export</button>
+      <button class="btn btn-primary btn-sm" onclick="openOrderForm(null)">+ Add order</button>
+    </div>
+    ${bulkBarHTML('orders')}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:36px;"><input type="checkbox" ${ords.length && ords.every(o=>selection.orders.has(o.id))? "checked":""} onchange='toggleSelectAll("orders", ${JSON.stringify(ords.map(o=>o.id))}, this.checked)'></th><th>Wix Order No</th><th>Supplier Order No</th><th>Date</th><th>Customer</th><th>Product</th><th>SKU</th><th class="num">Qty</th><th class="num">Unit Price</th><th>Coupon</th><th>Supplier</th><th>Paid via</th>
+        <th class="num">Cost to Client</th><th class="num">Supplier Cost</th><th class="num">Gross Profit</th><th></th></tr></thead>
+        <tbody>
+          ${ords.length? ords.map(o=>`
+            <tr>
+              <td><input type="checkbox" ${selection.orders.has(o.id)?"checked":""} onchange="toggleSelect('orders','${o.id}', this.checked)"></td>
+              <td>${esc(o.orderNo||"—")}</td>
+              <td>${esc(o.supplierOrderNo||"—")}</td>
+              <td>${o.date? new Date(o.date).toLocaleDateString('en-ZA'):"—"}</td>
+              <td>${esc(o.customer||"—")}</td>
+              <td>${esc(o.product||"—")}</td>
+              <td>${esc(o.sku||"—")}</td>
+              <td class="num">${o.qty||1}</td>
+              <td class="num">${o.unitPrice? R(o.unitPrice) : "—"}</td>
+              <td>${o.coupon?`<span class="tag">${esc(o.coupon)}</span>`:"—"}</td>
+              <td>${esc(o.supplier||"—")}</td>
+              <td><span class="tag ${o.paymentMethod==='Payflex'?'needs':''}">${esc(o.paymentMethod||"EFT")}</span></td>
+              <td class="num">${R(o.costToClient)}</td>
+              <td class="num">${R(o.costSupplier)}</td>
+              <td class="num">${R((o.costToClient||0)-(o.costSupplier||0))}</td>
+              <td class="row-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openOrderForm('${o.id}')">Edit</button>
+                <button class="icon-btn" onclick="deleteRow('orders','${o.id}')">✕</button>
+              </td>
+            </tr>`).join("") : `<tr><td colspan="16"><div class="empty-state"><div class="ic">▤</div>No orders logged for ${selectedMonth} yet</div></td></tr>`}
+          ${ords.length?`<tr class="total-row"><td colspan="12">TOTAL</td><td class="num">${R(totalC)}</td><td class="num">${R(totalS)}</td><td class="num">${R(totalC-totalS)}</td><td></td></tr>`:""}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderTransactions(){
+  pageHeader("Transactions");
+  const txs = txForMonth(selectedMonth);
+  const total = txs.reduce((s,t)=>s+(t.type==="Expense"?(+t.amount||0):0),0);
+  document.getElementById("content").innerHTML = `
+    ${monthTabsHTML()}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <button class="btn btn-primary btn-sm" onclick="openTxForm()">+ Add transaction</button>
+    </div>
+    ${bulkBarHTML('transactions')}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:36px;"><input type="checkbox" ${txs.length && txs.every(t=>selection.transactions.has(t.id))? "checked":""} onchange='toggleSelectAll("transactions", ${JSON.stringify(txs.map(t=>t.id))}, this.checked)'></th><th>Date</th><th>Type</th><th>Category</th><th>Subcategory</th><th>Description</th><th class="num">Amount</th><th>Added by</th><th></th></tr></thead>
+        <tbody>
+          ${txs.length? txs.map(t=>`
+            <tr>
+              <td><input type="checkbox" ${selection.transactions.has(t.id)?"checked":""} onchange="toggleSelect('transactions','${t.id}', this.checked)"></td>
+              <td>${t.date? new Date(t.date).toLocaleDateString('en-ZA'):"—"}</td>
+              <td><span class="tag">${esc(t.type)}</span></td>
+              <td>${t.category? esc(t.category):`<span class="tag needs">Needs review</span>`}</td>
+              <td>${esc(t.subcategory||"—")}</td>
+              <td>${esc(t.description||"—")}</td>
+              <td class="num">${R(t.amount)}</td>
+              <td>${esc(t.addedBy||"—")}</td>
+              <td class="row-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openTxForm('${t.id}')">Edit</button>
+                <button class="icon-btn" onclick="deleteRow('transactions','${t.id}')">✕</button>
+              </td>
+            </tr>`).join("") : `<tr><td colspan="9"><div class="empty-state"><div class="ic">▥</div>No transactions logged for ${selectedMonth} yet</div></td></tr>`}
+          ${txs.length?`<tr class="total-row"><td colspan="6">TOTAL EXPENSES</td><td class="num">${R(total)}</td><td colspan="2"></td></tr>`:""}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderReview(){
+  pageHeader("Needs Review");
+  refreshReviewBadge();
+  const q = DB.reviewQueue;
+  document.getElementById("content").innerHTML = `
+    <div class="banner"><span>◑</span><div><b>What lands here:</b> anything uploaded (a Wix row or a bill) that PLS HQ couldn't confidently sort into a category. Assign one below and it moves into Transactions automatically.</div></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th>Source</th><th>Assign category</th><th></th></tr></thead>
+        <tbody>
+          ${q.length? q.map(item=>`
+            <tr>
+              <td>${item.date? new Date(item.date).toLocaleDateString('en-ZA'):"—"}</td>
+              <td>${esc(item.description)}</td>
+              <td class="num">${R(item.amount)}</td>
+              <td><span class="tag">${esc(item.source||"manual")}</span></td>
+              <td>
+                <select id="cat_${item.id}" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);">
+                  <option value="">Choose…</option>
+                  ${DB.meta.categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("")}
+                </select>
+              </td>
+              <td class="row-actions">
+                <button class="btn btn-secondary btn-sm" onclick="resolveReview('${item.id}')">Assign</button>
+                <button class="icon-btn" onclick="deleteRow('reviewQueue','${item.id}')">✕</button>
+              </td>
+            </tr>`).join("") : `<tr><td colspan="6"><div class="empty-state"><div class="ic">✓</div>Nothing needs review — you're all caught up</div></td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function partnerLedger(){
+  const totals = {};
+  const names = [...DB.meta.partners, "Chris"];
+  names.forEach(p=>totals[p] = {earned:0, paid:0});
+  MONTHS.forEach(m=>{
+    const s = settlementForMonth(m);
+    DB.meta.partners.forEach(p=>{ totals[p].earned += (s.split[p]||0); });
+    totals["Chris"].earned += s.transferToChris;
+  });
+  DB.payouts.forEach(po=>{
+    if(totals[po.partner]) totals[po.partner].paid += (+po.amount||0);
+  });
+  names.forEach(p=>{ totals[p].balance = totals[p].earned - totals[p].paid; });
+  return totals;
+}
+function monthPaymentBreakdown(m){
+  const breakdown = {EFT:0, Yoco:0, Ikhoka:0, Payflex:0};
+  ordersForMonth(m).forEach(o=>{
+    const pm = PAYMENT_METHODS.includes(o.paymentMethod)? o.paymentMethod : "EFT";
+    breakdown[pm] += (+o.costToClient||0);
+  });
+  return breakdown;
+}
+function ledgerStatusLabel(p, t){
+  if(t.balance>0.01) return `Still owed to ${p}`;
+  if(t.balance<-0.01) return `${p} owes the business`;
+  return "Settled up";
+}
+function exportBusinessOverviewPDF(){
+  const ledger = partnerLedger();
+  const y = yearFigures();
+  const totalPb = {EFT:0,Yoco:0,Ikhoka:0,Payflex:0};
+  const monthRowsHtml = MONTHS.map(m=>{
+    const f = monthFigures(m), s = settlementForMonth(m), pb = monthPaymentBreakdown(m);
+    PAYMENT_METHODS.forEach(pm=>totalPb[pm]+=pb[pm]);
+    return `<tr>
+      <td>${m}</td>
+      <td style="text-align:right;">${R(f.revenue)}</td>
+      <td style="text-align:right;">${R(pb.EFT)}</td>
+      <td style="text-align:right;">${R(pb.Yoco)}</td>
+      <td style="text-align:right;">${R(pb.Ikhoka)}</td>
+      <td style="text-align:right;">${R(pb.Payflex)}</td>
+      <td style="text-align:right;">${R(f.netProfit)}</td>
+      <td style="text-align:right;">${R(f.adReserve)}</td>
+      ${DB.meta.partners.map(p=>`<td style="text-align:right;">${R(f.split[p])}</td>`).join("")}
+      <td style="text-align:right;color:${s.transferToChris<0?'#FF3B30':'inherit'}">${s.transferToChris<0? `(${R(Math.abs(s.transferToChris))})` : R(s.transferToChris)}</td>
+    </tr>`;
+  }).join("");
+  const totalRow = `<tr style="font-weight:700;background:#FBFBFD;">
+    <td>TOTAL</td>
+    <td style="text-align:right;">${R(y.revenue)}</td>
+    <td style="text-align:right;">${R(totalPb.EFT)}</td>
+    <td style="text-align:right;">${R(totalPb.Yoco)}</td>
+    <td style="text-align:right;">${R(totalPb.Ikhoka)}</td>
+    <td style="text-align:right;">${R(totalPb.Payflex)}</td>
+    <td style="text-align:right;">${R(y.netProfit)}</td>
+    <td style="text-align:right;">${R(y.adReserve)}</td>
+    ${DB.meta.partners.map(p=>`<td style="text-align:right;">${R(y.split[p])}</td>`).join("")}
+    <td style="text-align:right;color:${y.chrisSettlement<0?'#FF3B30':'inherit'}">${y.chrisSettlement<0? `(${R(Math.abs(y.chrisSettlement))})` : R(y.chrisSettlement)}</td>
+  </tr>`;
+  const ledgerRows = [...DB.meta.partners, "Chris"].map(p=>{
+    const t = ledger[p];
+    return `<tr><td>${esc(p)}</td><td style="text-align:right;">${R(t.earned)}</td><td style="text-align:right;">${R(t.paid)}</td><td style="text-align:right;">${R(Math.abs(t.balance))}</td><td>${esc(ledgerStatusLabel(p,t))}</td></tr>`;
+  }).join("");
+  const w = window.open("", "_blank");
+  if(!w){ toast("Your browser blocked the pop-up — allow pop-ups for this site and try again"); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>PLS HQ — Full Year Overview</title>
+    <style>
+      body{font-family:-apple-system,"Segoe UI",sans-serif;padding:30px;color:#1D1D1F;max-width:1150px;margin:0 auto;}
+      h1{font-size:19px;margin-bottom:2px;} .sub{color:#6E6E73;font-size:13px;margin-top:0;}
+      h2{font-size:14px;margin-top:26px;margin-bottom:6px;border-bottom:1px solid #E5E5EA;padding-bottom:6px;}
+      table{width:100%;border-collapse:collapse;font-size:11px;}
+      td,th{padding:5px 6px;border-bottom:1px solid #EEEEF1;text-align:left;white-space:nowrap;}
+      th{color:#6E6E73;font-weight:600;font-size:10px;text-transform:uppercase;}
+      .btn{background:#FF5C35;color:#fff;border:none;padding:10px 18px;border-radius:20px;font-size:14px;cursor:pointer;margin-bottom:24px;}
+      @media print{.btn{display:none;} @page{size:landscape;}}
+    </style></head>
+    <body>
+    <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    <h1>Pack Life Store — Full Year Overview</h1>
+    <p class="sub">Generated ${new Date().toLocaleDateString('en-ZA')}</p>
+
+    <h2>Outstanding balances (all time)</h2>
+    <table>
+      <tr><th>Who</th><th style="text-align:right;">Earned</th><th style="text-align:right;">Paid</th><th style="text-align:right;">Outstanding</th><th>Status</th></tr>
+      ${ledgerRows}
+    </table>
+
+    <h2>Monthly breakdown</h2>
+    <table>
+      <tr>
+        <th>Month</th><th style="text-align:right;">Revenue</th>
+        <th style="text-align:right;">EFT</th><th style="text-align:right;">Yoco</th><th style="text-align:right;">Ikhoka</th><th style="text-align:right;">Payflex</th>
+        <th style="text-align:right;">Net Profit</th><th style="text-align:right;">Marketing</th>
+        ${DB.meta.partners.map(p=>`<th style="text-align:right;">${esc(p)}</th>`).join("")}
+        <th style="text-align:right;">Chris (settlement)</th>
+      </tr>
+      ${monthRowsHtml}
+      ${totalRow}
+    </table>
+    <p style="font-size:11px;color:#6E6E73;margin-top:10px;">Chris's column is money owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round.</p>
+    </body></html>`);
+  w.document.close();
+}
+function exportBusinessOverviewCSV(){
+  const ledger = partnerLedger();
+  const y = yearFigures();
+  const q = v => `"${String(v==null?"":v).replace(/"/g,'""')}"`;
+  let csv = "Pack Life Store - Full Year Overview\n";
+  csv += `Generated,${new Date().toLocaleDateString('en-ZA')}\n\n`;
+  csv += "Outstanding balances (all time)\nWho,Earned,Paid,Outstanding,Status\n";
+  [...DB.meta.partners, "Chris"].forEach(p=>{
+    const t = ledger[p];
+    csv += `${q(p)},${t.earned.toFixed(2)},${t.paid.toFixed(2)},${Math.abs(t.balance).toFixed(2)},${q(ledgerStatusLabel(p,t))}\n`;
+  });
+  csv += "\nMonthly breakdown\n";
+  csv += `Month,Revenue,EFT,Yoco,Ikhoka,Payflex,Net Profit,Marketing,${DB.meta.partners.join(",")},Chris (settlement)\n`;
+  const totalPb = {EFT:0,Yoco:0,Ikhoka:0,Payflex:0};
+  MONTHS.forEach(m=>{
+    const f = monthFigures(m), s = settlementForMonth(m), pb = monthPaymentBreakdown(m);
+    PAYMENT_METHODS.forEach(pm=>totalPb[pm]+=pb[pm]);
+    csv += `${m},${f.revenue.toFixed(2)},${pb.EFT.toFixed(2)},${pb.Yoco.toFixed(2)},${pb.Ikhoka.toFixed(2)},${pb.Payflex.toFixed(2)},${f.netProfit.toFixed(2)},${f.adReserve.toFixed(2)},${DB.meta.partners.map(p=>f.split[p].toFixed(2)).join(",")},${s.transferToChris.toFixed(2)}\n`;
+  });
+  csv += `TOTAL,${y.revenue.toFixed(2)},${totalPb.EFT.toFixed(2)},${totalPb.Yoco.toFixed(2)},${totalPb.Ikhoka.toFixed(2)},${totalPb.Payflex.toFixed(2)},${y.netProfit.toFixed(2)},${y.adReserve.toFixed(2)},${DB.meta.partners.map(p=>y.split[p].toFixed(2)).join(",")},${y.chrisSettlement.toFixed(2)}\n`;
+  const blob = new Blob([csv],{type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `plshq-full-year-overview-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+function exportChrisStatementPDF(month){
+  const s = settlementForMonth(month);
+  const ords = ordersForMonth(month);
+  const groups = {};
+  ords.forEach(o=>{ const g=supplierGroup(o); groups[g]=(groups[g]||0)+(+o.costSupplier||0); });
+  const groupRows = Object.keys(groups).sort().map(g=>`<tr><td>${esc(g)}</td><td style="text-align:right;">${R(groups[g])}</td></tr>`).join("");
+  const orderRows = ords.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).map(o=>`
+    <tr>
+      <td>${o.date? new Date(o.date).toLocaleDateString('en-ZA'):"—"}</td>
+      <td>${esc(o.orderNo||"—")}</td>
+      <td>${esc(supplierGroup(o))}</td>
+      <td>${esc(o.product||"—")}</td>
+      <td>${esc(o.paymentMethod||"EFT")}</td>
+      <td style="text-align:right;">${R(o.costToClient)}</td>
+      <td style="text-align:right;">${R(o.costSupplier)}</td>
+    </tr>`).join("");
+  const owesLine = s.transferToChris<0
+    ? `<p class="big red">Chris owes the business ${R(Math.abs(s.transferToChris))}</p>`
+    : `<p class="big green">The business owes Chris ${R(s.transferToChris)}</p>`;
+  const w = window.open("", "_blank");
+  if(!w){ toast("Your browser blocked the pop-up — allow pop-ups for this site and try again"); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title>Chris Statement — ${month}</title>
+    <style>
+      body{font-family:-apple-system,"Segoe UI",sans-serif;padding:36px;color:#1D1D1F;max-width:820px;margin:0 auto;}
+      h1{font-size:19px;margin-bottom:2px;} .sub{color:#6E6E73;font-size:13px;margin-top:0;}
+      h2{font-size:14px;margin-top:26px;margin-bottom:6px;border-bottom:1px solid #E5E5EA;padding-bottom:6px;}
+      table{width:100%;border-collapse:collapse;font-size:12.5px;}
+      td,th{padding:6px 8px;border-bottom:1px solid #EEEEF1;text-align:left;}
+      th{color:#6E6E73;font-weight:600;font-size:11px;text-transform:uppercase;}
+      tr.total td{font-weight:700;background:#FBFBFD;}
+      .big{font-size:22px;font-weight:700;margin:10px 0 0;}
+      .red{color:#FF3B30;} .green{color:#2FA84F;}
+      .btn{background:#FF5C35;color:#fff;border:none;padding:10px 18px;border-radius:20px;font-size:14px;cursor:pointer;margin-bottom:24px;}
+      @media print{.btn{display:none;}}
+    </style></head>
+    <body>
+    <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    <h1>Pack Life Store — Supplier &amp; Payflex Statement</h1>
+    <p class="sub">${month} · Generated ${new Date().toLocaleDateString('en-ZA')}</p>
+
+    <h2>Revenue collected this month</h2>
+    <table>
+      <tr><td>Total revenue</td><td style="text-align:right;">${R(s.revenue)}</td></tr>
+      <tr><td>Collected via ${esc(DB.meta.centralCollector)} (EFT / Yoco / Ikhoka)</td><td style="text-align:right;">${R(s.centralIn)}</td></tr>
+      <tr><td>Collected via Payflex (held by Chris)</td><td style="text-align:right;">${R(s.payflexIn)}</td></tr>
+    </table>
+
+    <h2>Supplier payments Chris needs to make</h2>
+    <table>
+      <tr><th>Supplier</th><th style="text-align:right;">Owed</th></tr>
+      ${groupRows || `<tr><td colspan="2">No orders this month</td></tr>`}
+      <tr class="total"><td>Total owed to suppliers</td><td style="text-align:right;">${R(s.supplierOwedToChris)}</td></tr>
+    </table>
+
+    <h2>Settlement — why Chris owes / is owed money</h2>
+    <table>
+      <tr><td>Payflex cash Chris is holding</td><td style="text-align:right;">${R(s.payflexIn)}</td></tr>
+      <tr><td>Less: supplier payments Chris needs to make</td><td style="text-align:right;">- ${R(s.supplierOwedToChris)}</td></tr>
+    </table>
+    ${owesLine}
+
+    <h2>Order detail</h2>
+    <table>
+      <tr><th>Date</th><th>Order No</th><th>Supplier</th><th>Product</th><th>Paid via</th><th style="text-align:right;">Client paid</th><th style="text-align:right;">Supplier cost</th></tr>
+      ${orderRows || `<tr><td colspan="7">No orders logged for ${month}</td></tr>`}
+    </table>
+    </body></html>`);
+  w.document.close();
+}
+function exportChrisStatementCSV(month){
+  const s = settlementForMonth(month);
+  const ords = ordersForMonth(month);
+  const groups = {};
+  ords.forEach(o=>{ const g=supplierGroup(o); groups[g]=(groups[g]||0)+(+o.costSupplier||0); });
+  const q = v => `"${String(v==null?"":v).replace(/"/g,'""')}"`;
+  let csv = "";
+  csv += `Pack Life Store - Supplier & Payflex Statement\n`;
+  csv += `Month,${month}\nGenerated,${new Date().toLocaleDateString('en-ZA')}\n\n`;
+  csv += `Revenue collected\n`;
+  csv += `Total revenue,${s.revenue.toFixed(2)}\n`;
+  csv += `Collected via ${DB.meta.centralCollector},${s.centralIn.toFixed(2)}\n`;
+  csv += `Collected via Payflex,${s.payflexIn.toFixed(2)}\n\n`;
+  csv += `Supplier payments owed\nSupplier,Owed\n`;
+  Object.keys(groups).sort().forEach(g=>{ csv += `${q(g)},${groups[g].toFixed(2)}\n`; });
+  csv += `Total owed to suppliers,${s.supplierOwedToChris.toFixed(2)}\n\n`;
+  csv += `Settlement\n`;
+  csv += `Payflex cash held,${s.payflexIn.toFixed(2)}\n`;
+  csv += `Less supplier payments owed,-${s.supplierOwedToChris.toFixed(2)}\n`;
+  csv += `${s.transferToChris<0? "Chris owes the business" : "Business owes Chris"},${Math.abs(s.transferToChris).toFixed(2)}\n\n`;
+  csv += `Order detail\nDate,Order No,Supplier,Product,Paid via,Client Paid,Supplier Cost\n`;
+  ords.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(o=>{
+    csv += `${o.date? new Date(o.date).toLocaleDateString('en-ZA'):""},${q(o.orderNo)},${q(supplierGroup(o))},${q(o.product)},${q(o.paymentMethod||"EFT")},${(+o.costToClient||0).toFixed(2)},${(+o.costSupplier||0).toFixed(2)}\n`;
+  });
+  const blob = new Blob([csv],{type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `chris-statement-${month}.csv`;
+  a.click();
+}
+function renderSettlement(){
+  pageHeader("Payments & Settlement");
+  const s = settlementForMonth(selectedMonth);
+  const ledger = partnerLedger();
+  const collector = DB.meta.centralCollector;
+  document.getElementById("content").innerHTML = `
+    ${monthTabsHTML()}
+    <div class="banner blue">
+      <b>How this works:</b> EFT, Yoco and Ikhoka payments land with <b>${esc(collector)}</b> (the central account).
+      Payflex payouts go straight to <b>Chris</b>. Chris also pays the suppliers directly (PUMA, others), so before
+      anyone's paid out, that Payflex cash needs to be netted against what he owes the suppliers this month.
+      Adjust this in Settings if that's wrong.
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-secondary btn-sm" onclick="exportChrisStatementCSV('${selectedMonth}')">⇩ Export ${selectedMonth} as CSV</button>
+      <button class="btn btn-primary btn-sm" onclick="exportChrisStatementPDF('${selectedMonth}')">🖨 Export ${selectedMonth} statement (PDF)</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px;">
+      <span class="hint" style="align-self:center;margin-right:4px;">Whole business, all 12 months —</span>
+      <button class="btn btn-secondary btn-sm" onclick="exportBusinessOverviewCSV()">⇩ Full year overview (CSV)</button>
+      <button class="btn btn-primary btn-sm" onclick="exportBusinessOverviewPDF()">🖨 Full year overview (PDF)</button>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="card">
+        <div class="stat-label">Collected via ${esc(collector)}</div>
+        <div class="stat-value">${R(s.centralIn)}</div>
+        <div class="stat-sub">EFT + Yoco + Ikhoka, ${selectedMonth}</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Collected via Payflex (held by Chris)</div>
+        <div class="stat-value">${R(s.payflexIn)}</div>
+        <div class="stat-sub">Goes straight to Chris, not ${esc(collector)}</div>
+      </div>
+      <div class="card">
+        <div class="stat-label">Supplier payments Chris needs to make</div>
+        <div class="stat-value">${R(s.supplierOwedToChris)}</div>
+        <div class="stat-sub">${DB.meta.chrisFrontsSuppliers? "Sum of supplier cost across this month's orders — this is what Chris needs to pay PUMA/others" : "Assumption is off — see Settings"}</div>
+      </div>
+    </div>
+
+    <div class="section-head"><h2>Step 1 — Net the Payflex cash against what Chris needs to pay out</h2><span class="hint">Chris pays the suppliers; does the Payflex cash already sitting with him cover it?</span></div>
+    <div class="card card-lg">
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-soft);"><span>Payflex cash Chris is holding</span><b style="font-family:var(--font-mono)">${R(s.payflexIn)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;"><span>Less: what Chris needs to pay suppliers this month</span><b style="font-family:var(--font-mono)">- ${R(s.supplierOwedToChris)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0 0;border-top:1px solid var(--border);margin-top:4px;">
+        <span style="font-weight:700;">${s.payflexNet>=0? "Surplus Chris is left holding" : "Shortfall — send Chris extra to cover the suppliers"}</span>
+        <b style="font-family:var(--font-mono);font-size:16px;color:${s.payflexNet>=0?'var(--green)':'var(--red)'}">${R(Math.abs(s.payflexNet))}</b>
+      </div>
+    </div>
+
+    <div class="section-head"><h2>Step 2 — This month's profit split</h2><span class="hint">Same numbers as the Distribution page — Chris isn't part of this, see Step 1</span></div>
+    <div class="grid grid-3">
+      <div class="card"><div class="stat-label">Net profit</div><div class="stat-value">${R(s.netProfit)}</div></div>
+      <div class="card"><div class="stat-label">Marketing reserve (${pct(DB.meta.adReservePct)})</div><div class="stat-value">${R(s.adReserve)}</div></div>
+      <div class="card"><div class="stat-label">Distributable</div><div class="stat-value">${R(s.distributable)}</div></div>
+    </div>
+
+    <div class="section-head"><h2>Step 3 — Who actually gets paid, and how</h2><span class="hint">${selectedMonth} payout instructions</span></div>
+    <div class="card card-lg">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border-soft);">
+        <div><b>Set aside for marketing</b><div class="hint" style="font-size:12px;">Stays in ${esc(collector)}'s account, ${pct(DB.meta.adReservePct)} reserve</div></div>
+        <b style="font-family:var(--font-mono);font-size:16px;">${R(s.adReserve)}</b>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border-soft);">
+        <div><b>${s.transferToChris<0? "Chris owes the business" : "Send Chris"}</b>
+          <div class="hint" style="font-size:12px;">Not a profit share — purely covering the supplier/Payflex gap this month ${DB.meta.chrisFrontsSuppliers?`(suppliers owed: ${R(s.supplierOwedToChris)}, Payflex held: ${R(s.payflexIn)})`:""}</div>
+        </div>
+        <b style="font-family:var(--font-mono);font-size:16px;color:${s.transferToChris<0?'var(--red)':'var(--text)'}">${s.transferToChris<0? `owes ${R(Math.abs(s.transferToChris))}` : R(s.transferToChris)}</b>
+      </div>
+      ${DB.meta.partners.map((p,i)=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;${i===DB.meta.partners.length-1?'':'border-bottom:1px solid var(--border-soft);'}">
+          <div><b>${p===collector? `${esc(p)} keeps their share in the account` : `Pay ${esc(p)}`}</b><div class="hint" style="font-size:12px;">${pct(DB.meta.splitPercents[p]||0)} of distributable</div></div>
+          <b style="font-family:var(--font-mono);font-size:16px;">${R(s.split[p])}</b>
+        </div>`).join("")}
+    </div>
+    <p class="hint" style="margin-top:10px;">This assumes Chris is the one who pays suppliers (PUMA/others) directly and every order is tagged with how the customer paid. Tag payment method when logging or importing an order — untagged orders are treated as ${esc(collector)}-collected by default.</p>
+
+    <div class="section-head"><h2>Partner payouts</h2><span class="hint">Actual money transferred — separate from Orders and Transactions. Skip a month and it just carries forward.</span></div>
+    <div class="banner blue">This tracks what's <b>actually been paid</b> against what's been earned overall (all months combined), not just ${selectedMonth}. Log a payment whenever you actually transfer money to someone — the balance below updates automatically and never resets on its own.</div>
+    <div class="grid grid-3">
+      ${[...DB.meta.partners, "Chris"].map(p=>{
+        const t = ledger[p];
+        const owed = t.balance > 0.01, overpaid = t.balance < -0.01;
+        const isChris = p==="Chris";
+        return `
+        <div class="card">
+          <div class="stat-label">${esc(p)} — ${isChris? "settlement balance":"balance"}</div>
+          <div class="stat-value ${owed?'neg':overpaid?'pos':''}">${R(Math.abs(t.balance))}</div>
+          <div class="stat-sub">${owed? `Still owed to ${esc(p)}` : overpaid? `${esc(p)} owes the business` : "All settled up"}</div>
+          <div class="stat-sub">${isChris? "Supplier/Payflex settlement" : "Profit share"} to date ${R(t.earned)} · Paid to date ${R(t.paid)}</div>
+        </div>`;
+      }).join("")}
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin:14px 0;">
+      <button class="btn btn-primary btn-sm" onclick="openPayoutForm()">+ Log a payment</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Paid to</th><th class="num">Amount</th><th>Note</th><th>Logged by</th><th></th></tr></thead>
+        <tbody>
+          ${DB.payouts.length? DB.payouts.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map(po=>`
+            <tr>
+              <td>${po.date? new Date(po.date).toLocaleDateString('en-ZA'):"—"}</td>
+              <td>${esc(po.partner)}</td>
+              <td class="num">${R(po.amount)}</td>
+              <td>${esc(po.note||"—")}</td>
+              <td>${esc(po.addedBy||"—")}</td>
+              <td class="row-actions"><button class="icon-btn" onclick="deleteRow('payouts','${po.id}')">✕</button></td>
+            </tr>`).join("") : `<tr><td colspan="6"><div class="empty-state">No payments logged yet</div></td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+function openPayoutForm(){
+  openModal(`
+    <h3>Log a payment</h3><p class="sub">Record money you've actually transferred to someone — this doesn't touch Orders or Transactions, just the running balance. If Chris is paying money back to the business (e.g. handing over a Payflex surplus), enter the amount as negative.</p>
+    <div class="field-row">
+      <div class="field"><label>Paid to</label><select id="f_partner">${[...DB.meta.partners, "Chris"].map(p=>`<option>${esc(p)}</option>`).join("")}</select></div>
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    </div>
+    <div class="field"><label>Amount (R)</label><input id="f_amount" type="number" step="0.01"></div>
+    <div class="field"><label>Note (optional)</label><input id="f_note" placeholder="e.g. July profit share, EFT"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitPayoutForm()">Save payment</button>
+    </div>
+  `);
+}
+function submitPayoutForm(){
+  DB.payouts.push({id:uid(), partner:val('f_partner'), date:val('f_date'), amount:parseFloat(val('f_amount'))||0, note:val('f_note'), addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
+  closeModal(); saveDB(true); render();
+}
+
+function renderDistribution(){
+  pageHeader("Distribution");
+  const y = yearFigures();
+  document.getElementById("content").innerHTML = `
+    <div class="grid grid-3">
+      <div class="card"><div class="stat-label">Full-year net profit</div><div class="stat-value">${R(y.netProfit)}</div></div>
+      <div class="card"><div class="stat-label">Marketing reserve (${pct(DB.meta.adReservePct)})</div><div class="stat-value">${R(y.adReserve)}</div></div>
+      <div class="card"><div class="stat-label">Distributed to shareholders</div><div class="stat-value">${R(y.distributable)}</div></div>
+    </div>
+    <div class="section-head"><h2>How the split works</h2></div>
+    <div class="banner blue">Each month: <b>Net Profit</b> = Gross Profit − Expenses. <b>${pct(DB.meta.adReservePct)}</b> is set aside for marketing. What's left splits between the two shareholders — ${DB.meta.partners.map(p=>`<b>${esc(p)} ${pct(DB.meta.splitPercents[p]||0)}</b>`).join(" and ")}. Chris stepped down as a shareholder — he's no longer part of this split. He still pays suppliers directly and collects Payflex, tracked as its own running settlement below (and on Payments & Settlement).</div>
+
+    <div class="table-wrap" style="margin-top:8px;">
+      <table>
+        <thead><tr><th>Month</th><th class="num">Net Profit</th><th class="num">Marketing</th><th class="num">Distributable</th>${DB.meta.partners.map(p=>`<th class="num">${esc(p)}</th>`).join("")}<th class="num">Chris (settlement)</th></tr></thead>
+        <tbody>
+          ${MONTHS.map(m=>{ const f=monthFigures(m); const s=settlementForMonth(m); return `
+            <tr>
+              <td>${m}</td>
+              <td class="num">${R(f.netProfit)}</td>
+              <td class="num">${R(f.adReserve)}</td>
+              <td class="num">${R(f.distributable)}</td>
+              ${DB.meta.partners.map(p=>`<td class="num">${R(f.split[p])}</td>`).join("")}
+              <td class="num" style="color:${s.transferToChris<0?'var(--red)':'inherit'}">${s.transferToChris<0? `(${R(Math.abs(s.transferToChris))})` : R(s.transferToChris)}</td>
+            </tr>`;}).join("")}
+          <tr class="total-row">
+            <td>FULL YEAR</td><td class="num">${R(y.netProfit)}</td><td class="num">${R(y.adReserve)}</td>
+            <td class="num">${R(y.distributable)}</td>
+            ${DB.meta.partners.map(p=>`<td class="num">${R(y.split[p])}</td>`).join("")}
+            <td class="num" style="color:${y.chrisSettlement<0?'var(--red)':'inherit'}">${y.chrisSettlement<0? `(${R(Math.abs(y.chrisSettlement))})` : R(y.chrisSettlement)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint" style="margin-top:8px;">Chris's column is money still owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round. Full detail on Payments & Settlement.</p>
+
+    <div class="section-head"><h2>Gym ticket sales — Chris's own income</h2><span class="hint">Pack Life Gym SOMA Inner Balance passes — not part of the PLS profit split</span></div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+      <button class="btn btn-primary btn-sm" onclick="openTicketForm()">+ Add ticket sale</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Inv No</th><th>Date</th><th class="num">Cost to Client</th><th class="num">Yoco Fees</th><th class="num">Profit to Chris</th><th></th></tr></thead>
+        <tbody>
+          ${DB.ticketSales.length? DB.ticketSales.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map(t=>`
+            <tr>
+              <td>${esc(t.invNo)}</td>
+              <td>${t.date? new Date(t.date).toLocaleDateString('en-ZA'):"—"}</td>
+              <td class="num">${R(t.costToClient)}</td>
+              <td class="num">${R(t.yocoFees)}</td>
+              <td class="num">${R((t.costToClient||0)-(t.yocoFees||0))}</td>
+              <td class="row-actions"><button class="icon-btn" onclick="deleteRow('ticketSales','${t.id}')">✕</button></td>
+            </tr>`).join("") : `<tr><td colspan="6"><div class="empty-state">No ticket sales logged yet</div></td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/* ---------- Upload Center ---------- */
+let parsedRows=[]; let mapping={};
+function renderUpload(){
+  pageHeader("Upload Center");
+  document.getElementById("content").innerHTML = `
+    <div class="grid grid-2">
+      <div class="card card-lg">
+        <div class="stat-label" style="margin-bottom:14px;">📦 Wix order export</div>
+        <p style="font-size:13px;color:var(--text-secondary);margin-top:0;">Upload the CSV/XLSX from a bulk Wix orders export, or drop one or more <b>PDF</b> order receipts (the ones you download per-order). PLS HQ reads them and drops the result straight into the <b>${selectedMonth}</b> Orders journal — you always get a chance to check it first.</p>
+        <div class="dropzone" id="wixDrop">
+          <div class="ic">⇧</div>
+          <div class="t">Drop file(s) or click to choose</div>
+          <div class="s">.csv, .xlsx, or .pdf (multiple PDFs at once is fine)</div>
+        </div>
+        <input type="file" id="wixFile" accept=".csv,.xlsx,.xls,.pdf" multiple class="hidden">
+        <div id="wixMapperHost"></div>
+      </div>
+
+      <div class="card card-lg">
+        <div class="stat-label" style="margin-bottom:14px;">🧾 Bill / statement</div>
+        <p style="font-size:13px;color:var(--text-secondary);margin-top:0;">FNB, Yoco, Meta Ads, courier invoices — anything else. PLS HQ won't try to read these; you enter the amount and category yourself, and the file gets filed in the Document Vault as the paper trail.</p>
+        <div class="dropzone" id="billDrop">
+          <div class="ic">🧾</div>
+          <div class="t">Drop a bill or click to choose</div>
+          <div class="s">PDF, image, or any file — stored + logged as a transaction</div>
+        </div>
+        <input type="file" id="billFile" class="hidden">
+      </div>
+    </div>
+  `;
+  const wixDrop = document.getElementById("wixDrop");
+  const wixFile = document.getElementById("wixFile");
+  wixDrop.onclick=()=>wixFile.click();
+  wixDrop.ondragover=e=>{e.preventDefault();wixDrop.classList.add("drag");};
+  wixDrop.ondragleave=()=>wixDrop.classList.remove("drag");
+  wixDrop.ondrop=e=>{e.preventDefault();wixDrop.classList.remove("drag");if(e.dataTransfer.files.length) handleWixFiles(Array.from(e.dataTransfer.files));};
+  wixFile.onchange=e=>{ if(e.target.files.length) handleWixFiles(Array.from(e.target.files)); };
+
+  const billDrop = document.getElementById("billDrop");
+  const billFile = document.getElementById("billFile");
+  billDrop.onclick=()=>billFile.click();
+  billDrop.ondragover=e=>{e.preventDefault();billDrop.classList.add("drag");};
+  billDrop.ondragleave=()=>billDrop.classList.remove("drag");
+  billDrop.ondrop=e=>{e.preventDefault();billDrop.classList.remove("drag");if(e.dataTransfer.files[0]) openBillForm(e.dataTransfer.files[0]);};
+  billFile.onchange=e=>{ if(e.target.files[0]) openBillForm(e.target.files[0]); };
+}
+
+function handleWixFiles(files){
+  const pdfs = files.filter(f=>f.name.toLowerCase().endsWith(".pdf"));
+  const others = files.filter(f=>!f.name.toLowerCase().endsWith(".pdf"));
+  if(pdfs.length){ handleWixPdfs(pdfs); }
+  else if(others.length){ handleWixFile(others[0]); }
+}
+
+function handleWixFile(file){
+  const name=file.name.toLowerCase();
+  if(name.endsWith(".csv")){
+    Papa.parse(file,{header:true,skipEmptyLines:true,complete:res=>startMapper(res.meta.fields, res.data)});
+  }else{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const wb = XLSX.read(e.target.result,{type:"array"});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws,{defval:""});
+      startMapper(Object.keys(json[0]||{}), json);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+/* ---------- Wix order PDFs (per-order receipts) ---------- */
+async function handleWixPdfs(files){
+  toast(`Reading ${files.length} PDF${files.length===1?"":"s"}…`);
+  let rows = [];
+  for(const f of files){
+    try{
+      const text = await extractPdfText(f);
+      rows = rows.concat(parseOrderPdfText(text));
+    }catch(e){ console.error(e); }
+  }
+  if(!rows.length){
+    toast("Couldn't read order details from those PDFs — add rows manually below");
+    rows = [{orderNo:"",date:"",customer:"",sku:"",product:"",qty:1,unitPrice:0,price:0,coupon:"",paymentMethod:"EFT"}];
+  } else {
+    toast(`Pulled ${rows.length} line${rows.length===1?"":"s"} from ${files.length} PDF${files.length===1?"":"s"} — check before importing`);
+  }
+  // Normalize dates up front so what's shown in the review table is exactly what will be saved —
+  // no silent "defaults to today" happening later at import time.
+  rows = rows.map(r=>({...r, date: (r.date && !isNaN(new Date(r.date))) ? r.date : new Date().toISOString()}));
+  startPdfOrderReview(rows);
+}
+function parseOrderPdfText(text){
+  // Route to whichever parser matches the actual document — a Wix order receipt
+  // ("Order #...", "SKU:") and a Pack Life Store invoice ("Invoice #...", line-item
+  // table) look nothing alike, so detect which one this is before parsing.
+  if(/Order\s*#/i.test(text)) return parseWixOrderPdfText(text);
+  if(/Invoice\s*#/i.test(text)) return parseInvoicePdfText(text);
+  return [{orderNo:"", date:"", customer:"", sku:"", product:"", qty:1, unitPrice:0, price:0, coupon:"", paymentMethod:"EFT"}];
+}
+const MONTH_NAME_IDX = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function parseNamedDate(str){
+  // Handles both "31 Jul 2026" and "Aug 5, 2026" orderings.
+  let m = str.match(/(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})/);
+  if(m){
+    const mi = MONTH_NAME_IDX[m[2].slice(0,3).toLowerCase()];
+    if(mi!==undefined) return new Date(Date.UTC(parseInt(m[3]), mi, parseInt(m[1]))).toISOString();
+  }
+  m = str.match(/([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})/);
+  if(m){
+    const mi = MONTH_NAME_IDX[m[1].slice(0,3).toLowerCase()];
+    if(mi!==undefined) return new Date(Date.UTC(parseInt(m[3]), mi, parseInt(m[2]))).toISOString();
+  }
+  return "";
+}
+function detectPaymentMethod(text){
+  const m = text.match(/Paid with\s*[:\-]?\s*([A-Za-z ]+)/i);
+  if(!m) return "EFT";
+  const p = m[1].toLowerCase();
+  if(p.includes("payflex")) return "Payflex";
+  if(p.includes("yoco")) return "Yoco";
+  if(p.includes("ikhok")) return "Ikhoka";
+  return "EFT";
+}
+/* ---------- Pack Life Store-issued invoices ("Invoice #...", line-item table) ---------- */
+function parseInvoicePdfText(text){
+  const lines = text.split("\n").map(l=>l.trim()).filter(Boolean);
+  const joined = lines.join("\n");
+
+  const invM = joined.match(/Invoice\s*#\s*(\S+)/i);
+  const orderNo = invM? invM[1].replace(/[^A-Za-z0-9\-]/g,"") : "";
+
+  let date = "";
+  const issueM = joined.match(/Issue Date:\s*(.+)/i);
+  if(issueM) date = parseNamedDate(issueM[1]);
+
+  let customer = "";
+  const billIdx = lines.findIndex(l=>/^Bill to:?$/i.test(l));
+  if(billIdx>=0 && lines[billIdx+1]) customer = lines[billIdx+1];
+
+  const rows = [];
+  lines.forEach(line=>{
+    // "PUMA Deviate Pure NITRO™ Running Shoes   1   ZAR 3,199.00   ZAR 3,199.00"
+    const m = line.match(/^(.+?)\s+(\d+)\s+(?:R|ZAR)\s?([0-9][0-9,]*\.\d{2})\s+(?:R|ZAR)\s?([0-9][0-9,]*\.\d{2})$/i);
+    if(!m) return;
+    const product = m[1].trim();
+    if(/^(product or service|item|description)$/i.test(product)) return; // header row, just in case
+    rows.push({
+      orderNo, date, customer, sku:"", product,
+      qty: parseInt(m[2])||1, unitPrice: parseFloat(m[3].replace(/,/g,"")),
+      price: parseFloat(m[4].replace(/,/g,"")), coupon:"", paymentMethod:"EFT"
+    });
+  });
+  if(!rows.length) rows.push({orderNo, date, customer, sku:"", product:"", qty:1, unitPrice:0, price:0, coupon:"", paymentMethod:"EFT"});
+  return rows;
+}
+function parseWixOrderPdfText(text){
+  const lines = text.split("\n").map(l=>l.trim()).filter(Boolean);
+  const joined = lines.join("\n");
+
+  const orderM = joined.match(/Order\s*#\s*(\S+)/i);
+  const orderNo = orderM? orderM[1].replace(/[^A-Za-z0-9\-]/g,"") : "";
+
+  let customer = "";
+  const orderLineIdx = lines.findIndex(l=>/^Order\s*#/i.test(l));
+  if(orderLineIdx>=0 && lines[orderLineIdx+1]) customer = lines[orderLineIdx+1].split(",")[0].trim();
+
+  let date = "";
+  const dateM = joined.match(/Placed on\s+(.+)/i);
+  if(dateM) date = parseNamedDate(dateM[1]);
+
+  const paymentMethod = detectPaymentMethod(joined);
+
+  const shippingM = joined.match(/Shipping\s+R\s?([0-9][0-9,]*\.\d{2})/i);
+  const shipping = shippingM? parseFloat(shippingM[1].replace(/,/g,"")) : 0;
+
+  // Every item ends in a line like "x1 R 640.39" or "R 509.15 x2 R 1,018.30" — anchor on
+  // that (not the SKU, which isn't always present) and walk backward to pick up whatever
+  // product name / SKU / variant / coupon precede it. This also sidesteps struck-through
+  // "was R xxx" discount prices, since the anchor's own total is the actual amount charged.
+  const anchorRe = /^(?:R\s?([0-9][0-9,]*\.\d{2})\s+)?x\s?(\d+)\s+R\s?([0-9][0-9,]*\.\d{2})$/i;
+  const anchorIdxs = [];
+  lines.forEach((l,i)=>{ if(anchorRe.test(l)) anchorIdxs.push(i); });
+  const headerEndIdx = lines.findIndex(l=>/^Placed on/i.test(l));
+
+  const rows = [];
+  anchorIdxs.forEach((idx,k)=>{
+    const m = lines[idx].match(anchorRe);
+    const qty = parseInt(m[2])||1;
+    const lineTotal = parseFloat(m[3].replace(/,/g,""));
+    const unitPrice = m[1]? parseFloat(m[1].replace(/,/g,"")) : Math.round((lineTotal/qty)*100)/100;
+    const blockStart = k===0? headerEndIdx+1 : anchorIdxs[k-1]+1;
+    let product="", sku="", variant="", coupon="";
+    for(let j=blockStart;j<idx;j++){
+      const l = lines[j]; let mm;
+      if((mm=l.match(/^SKU:\s*(\S+)/i))){ sku=mm[1]; continue; }
+      if((mm=l.match(/^(?:Size|Colou?r|Flavou?r):\s*(.+)/i))){ variant=mm[1]; continue; }
+      if((mm=l.match(/^([A-Za-z0-9]+)\s*\(-?R\s?[0-9.,]+\)/))){ coupon=mm[1]; continue; }
+      if(/^R\s?[0-9][0-9,]*\.\d{2}$/.test(l)) continue; // standalone price/strikethrough line
+      if(!product) product = l;
+    }
+    rows.push({
+      orderNo, date, customer, sku,
+      product: variant? `${product} (${variant})` : product,
+      qty, unitPrice, price: lineTotal, coupon, paymentMethod
+    });
+  });
+  if(!rows.length){
+    rows.push({orderNo, date, customer, sku:"", product:"", qty:1, unitPrice:0, price:0, coupon:"", paymentMethod});
+  } else if(shipping>0){
+    rows.push({orderNo, date, customer, sku:"", product:"Shipping", qty:1, unitPrice:shipping, price:shipping, coupon:"", paymentMethod});
+  }
+  return rows;
+}
+let pdfOrderRows = [];
+function startPdfOrderReview(rows){
+  pdfOrderRows = rows;
+  renderPdfOrderReview();
+}
+function renderPdfOrderReview(){
+  const host = document.getElementById("wixMapperHost");
+  const inputStyle = "border:1px solid var(--border);border-radius:6px;padding:4px 6px;width:100%;";
+  host.innerHTML = `
+    <div style="margin-top:16px;">
+      <div class="banner" style="margin-bottom:10px;">Reading PDFs is best-effort — check every row against the actual receipt before importing, especially price and SKU.</div>
+      <div class="table-wrap" style="margin:10px 0;">
+        <table>
+          <thead><tr><th>Order No</th><th>Date</th><th>Customer</th><th>Product</th><th>SKU</th><th class="num">Qty</th><th>Coupon</th><th class="num">Unit Price</th><th class="num">Total</th><th>Paid via</th><th></th></tr></thead>
+          <tbody>
+            ${pdfOrderRows.map((r,i)=>`
+              <tr>
+                <td><input style="${inputStyle}width:90px;" value="${esc(r.orderNo)}" onchange="pdfOrderRows[${i}].orderNo=this.value"></td>
+                <td><input type="date" style="${inputStyle}width:130px;" value="${r.date && !isNaN(new Date(r.date))? new Date(r.date).toISOString().slice(0,10) : ''}" onchange="pdfOrderRows[${i}].date=this.value"></td>
+                <td><input style="${inputStyle}width:120px;" value="${esc(r.customer)}" onchange="pdfOrderRows[${i}].customer=this.value"></td>
+                <td><input style="${inputStyle}width:150px;" value="${esc(r.product)}" onchange="pdfOrderRows[${i}].product=this.value"></td>
+                <td><input style="${inputStyle}width:110px;" value="${esc(r.sku)}" onchange="pdfOrderRows[${i}].sku=this.value"></td>
+                <td><input type="number" min="1" step="1" style="${inputStyle}width:55px;text-align:right;" value="${r.qty||1}" onchange="pdfOrderRows[${i}].qty=parseInt(this.value)||1; pdfOrderRows[${i}].price=Math.round((pdfOrderRows[${i}].unitPrice||0)*pdfOrderRows[${i}].qty*100)/100; renderPdfOrderReview();"></td>
+                <td><input style="${inputStyle}width:90px;" value="${esc(r.coupon)}" onchange="pdfOrderRows[${i}].coupon=this.value"></td>
+                <td><input type="number" step="0.01" style="${inputStyle}width:90px;text-align:right;" value="${r.unitPrice||0}" onchange="pdfOrderRows[${i}].unitPrice=parseFloat(this.value)||0; pdfOrderRows[${i}].price=Math.round(pdfOrderRows[${i}].unitPrice*(pdfOrderRows[${i}].qty||1)*100)/100; renderPdfOrderReview();"></td>
+                <td><input type="number" step="0.01" style="${inputStyle}width:90px;text-align:right;" value="${r.price}" onchange="pdfOrderRows[${i}].price=parseFloat(this.value)||0"></td>
+                <td><select style="${inputStyle}width:90px;" onchange="pdfOrderRows[${i}].paymentMethod=this.value">${PAYMENT_METHODS.map(p=>`<option ${r.paymentMethod===p?"selected":""}>${p}</option>`).join("")}</select></td>
+                <td><button class="icon-btn" onclick="pdfOrderRows.splice(${i},1);renderPdfOrderReview();">✕</button></td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin:-6px 0 10px;">Changing Qty or Unit Price recalculates Total automatically (Unit Price × Qty) — you can still type over Total by hand if it doesn't quite match the receipt (rounding, bundled shipping, etc).</p>
+      <div style="display:flex;justify-content:space-between;">
+        <button class="btn btn-secondary btn-sm" onclick="pdfOrderRows.push({orderNo:'',date:new Date().toISOString(),customer:'',sku:'',product:'',qty:1,unitPrice:0,price:0,coupon:'',paymentMethod:'EFT'});renderPdfOrderReview();">+ Add row</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('wixMapperHost').innerHTML=''">Cancel</button>
+          <button class="btn btn-primary btn-sm" onclick="confirmPdfOrderImport()">Import ${pdfOrderRows.length} row(s) into ${selectedMonth}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function confirmPdfOrderImport(){
+  let count=0;
+  pdfOrderRows.forEach(r=>{
+    if(!r.product && !r.sku && !r.price) return;
+    const d = r.date && !isNaN(new Date(r.date)) ? r.date : new Date().toISOString();
+    const month = monthOf(d) || selectedMonth;
+    DB.orders.push({
+      id:uid(), month, orderNo:r.orderNo||"", date:d,
+      customer:r.customer||"", sku:r.sku||"", product:r.product||"", coupon:r.coupon||"",
+      qty:parseInt(r.qty)||1, unitPrice:parseFloat(r.unitPrice)||0,
+      paymentMethod:r.paymentMethod||"EFT", costToClient:parseFloat(r.price)||0, costSupplier:0, supplier:"",
+      source:"wix-pdf", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()
+    });
+    count++;
+  });
+  DB.documents.push({id:uid(), name:`Wix PDF import (${count} rows)`, type:"import-log", month:selectedMonth, category:"Wix Export", note:`Imported ${count} order rows from PDF receipts`, addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
+  document.getElementById("wixMapperHost").innerHTML="";
+  toast(`Imported ${count} orders from PDF, filed by their actual order date — double-check, then add supplier cost`);
+  saveDB(true);
+  page="orders"; render();
+}
+
+const TARGET_FIELDS = [
+  {key:"date",label:"Order date"},
+  {key:"orderNo",label:"Order number"},
+  {key:"customer",label:"Customer name"},
+  {key:"sku",label:"SKU"},
+  {key:"product",label:"Product"},
+  {key:"price",label:"Price / order total"},
+  {key:"coupon",label:"Coupon used"},
+  {key:"payment",label:"Payment method"}
+];
+function guessMap(headers){
+  const g={};
+  headers.forEach(h=>{
+    const l=h.toLowerCase();
+    if(!g.date && /date/.test(l)) g.date=h;
+    if(!g.orderNo && /order.?(no|number|#|id)/.test(l)) g.orderNo=h;
+    if(!g.customer && /(customer|buyer|name|billing)/.test(l)) g.customer=h;
+    if(!g.sku && /sku/.test(l)) g.sku=h;
+    if(!g.product && /(product|item|title)/.test(l)) g.product=h;
+    if(!g.price && /(price|total|amount|paid)/.test(l)) g.price=h;
+    if(!g.coupon && /(coupon|discount|promo)/.test(l)) g.coupon=h;
+    if(!g.payment && /(payment|method|gateway|processor)/.test(l)) g.payment=h;
+  });
+  return g;
+}
+function normalizePaymentMethod(raw){
+  const l=String(raw||"").toLowerCase();
+  if(l.includes("payflex")) return "Payflex";
+  if(l.includes("yoco")) return "Yoco";
+  if(l.includes("ikhoka")||l.includes("ikhokha")) return "Ikhoka";
+  if(l.includes("eft")||l.includes("bank")) return "EFT";
+  return DB.meta.centralCollector? "EFT" : "EFT";
+}
+function startMapper(headers, rows){
+  parsedRows = rows; mapping = guessMap(headers);
+  document.getElementById("wixMapperHost").innerHTML = `
+    <div style="margin-top:16px;">
+      <div class="stat-label">Match the columns (${rows.length} rows found)</div>
+      <div class="mapper-grid">
+        ${TARGET_FIELDS.map(f=>`
+          <div class="mapper-row">
+            <span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">${f.label}</span>
+            <select data-target="${f.key}" onchange="mapping['${f.key}']=this.value">
+              <option value="">— not in file —</option>
+              ${headers.map(h=>`<option value="${esc(h)}" ${mapping[f.key]===h?"selected":""}>${esc(h)}</option>`).join("")}
+            </select>
+          </div>`).join("")}
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('wixMapperHost').innerHTML=''">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="confirmWixImport()">Import ${rows.length} rows into ${selectedMonth}</button>
+      </div>
+    </div>
+  `;
+}
+function confirmWixImport(){
+  let count=0;
+  parsedRows.forEach(row=>{
+    const price = parseFloat(String(row[mapping.price]||"0").replace(/[^0-9.\-]/g,""))||0;
+    const date = mapping.date? row[mapping.date] : new Date().toISOString();
+    const month = monthOf(date) || selectedMonth;
+    const o = {
+      id: uid(),
+      month,
+      orderNo: mapping.orderNo? row[mapping.orderNo]:"",
+      date: date,
+      customer: mapping.customer? row[mapping.customer]:"",
+      sku: mapping.sku? row[mapping.sku]:"",
+      product: mapping.product? row[mapping.product]:"",
+      coupon: mapping.coupon? row[mapping.coupon]:"",
+      paymentMethod: mapping.payment? normalizePaymentMethod(row[mapping.payment]) : "EFT",
+      costToClient: price,
+      costSupplier: 0,
+      supplier: "",
+      source:"wix",
+      addedBy: currentUser||"Unknown",
+      addedAt: new Date().toISOString()
+    };
+    DB.orders.push(o); count++;
+  });
+  DB.documents.push({id:uid(),name:`Wix export (${count} rows)`,type:"import-log",month:selectedMonth,category:"Wix Export",note:`Imported ${count} order rows`,addedBy:currentUser||"Unknown",addedAt:new Date().toISOString()});
+  document.getElementById("wixMapperHost").innerHTML="";
+  toast(`Imported ${count} orders, filed by their actual order date — supplier cost still needs adding per row`);
+  saveDB(true);
+  page="orders"; render();
+}
+
+/* ---------- Document Vault ---------- */
+let selectedFolder = "All";
+function renderVault(){
+  pageHeader("Document Vault");
+  const allDocs = DB.documents.slice().sort((a,b)=>new Date(b.addedAt)-new Date(a.addedAt));
+  const usedFolders = [...new Set(allDocs.map(d=>d.folder||"General"))];
+  const folders = [...new Set([...DB.meta.docFolders, ...usedFolders])];
+  const docs = selectedFolder==="All"? allDocs : allDocs.filter(d=>(d.folder||"General")===selectedFolder);
+  document.getElementById("content").innerHTML = `
+    <div class="banner blue">Small files (under ~40KB — most PDFs/scans of receipts) are stored directly in PLS HQ. For anything already in Google Drive, or too large to store here, click <b>+ Store a document</b> below and paste the share link into the <b>Google Drive link</b> field — no need to re-upload it.</div>
+    <div class="tabs">
+      <div class="tab ${selectedFolder==='All'?'active':''}" onclick="selectedFolder='All';render();">All <span class="hint" style="font-size:11px;">(${allDocs.length})</span></div>
+      ${folders.map(f=>`<div class="tab ${selectedFolder===f?'active':''}" onclick="selectedFolder='${esc(f)}';render();">${esc(f)} <span class="hint" style="font-size:11px;">(${allDocs.filter(d=>(d.folder||'General')===f).length})</span></div>`).join("")}
+      <div class="tab" style="border-style:dashed;color:var(--text-tertiary);" onclick="addDocFolder()">+ New folder</div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+      <button class="btn btn-primary btn-sm" onclick="openBillForm()">+ Store a document</button>
+    </div>
+    <div class="doc-grid">
+      ${docs.length? docs.map(d=>`
+        <div class="doc-card">
+          <div class="doc-thumb">${d.dataUrl && d.fileType && d.fileType.startsWith("image")? `<img src="${d.dataUrl}">` : (d.driveLink? "🔗" : "🧾")}</div>
+          <div class="doc-name" title="${esc(d.name)}">${esc(d.name)}</div>
+          <div class="doc-meta"><span class="tag">${esc(d.folder||"General")}</span> ${esc(d.category||"—")} · ${d.addedAt? new Date(d.addedAt).toLocaleDateString('en-ZA'):""}</div>
+          <div class="doc-meta">by ${esc(d.addedBy||"—")}</div>
+          ${d.driveLink? `<div style="margin-top:8px;"><a href="${esc(d.driveLink)}" target="_blank" style="font-size:12px;">Open in Drive ↗</a></div>`:""}
+          ${d.dataUrl && !(d.fileType||"").startsWith("image")? `<div style="margin-top:8px;"><a href="${d.dataUrl}" download="${esc(d.name)}" style="font-size:12px;">Download ↓</a></div>`:""}
+          <div style="margin-top:8px;"><button class="icon-btn" onclick="deleteRow('documents','${d.id}')">Remove</button></div>
+        </div>`).join(""): `<div class="empty-state" style="grid-column:1/-1;"><div class="ic">▢</div>No documents in ${selectedFolder==='All'?'the vault':'this folder'} yet</div>`}
+    </div>
+  `;
+}
+function addDocFolder(){
+  const name = prompt("Name for the new folder:");
+  if(!name || !name.trim()) return;
+  const clean = name.trim();
+  if(!DB.meta.docFolders.includes(clean)) DB.meta.docFolders.push(clean);
+  selectedFolder = clean;
+  saveDB(true); render();
+}
+
+/* ---------- Settings ---------- */
+function renderSettings(){
+  pageHeader("Settings");
+  document.getElementById("content").innerHTML = `
+    <div class="grid grid-2">
+      <div class="card card-lg">
+        <div class="stat-label" style="margin-bottom:12px;">Shareholders & split</div>
+        <p style="font-size:13px;color:var(--text-secondary);">Profit splits between <b>${DB.meta.partners.join(" and ")}</b> after the marketing reserve. Chris stepped down as a shareholder — he's no longer part of this split, but still pays suppliers directly and collects Payflex, tracked separately under Payments & Settlement. Gym ticket-sale profit stays 100% his own income, outside this split.</p>
+        <div class="field"><label>Marketing reserve %</label>
+          <input type="number" id="reservePct" value="${(DB.meta.adReservePct*100).toFixed(0)}" min="0" max="100" oninput="updateSplitTotalHint()">
+        </div>
+        <div class="field-row">
+          ${DB.meta.partners.map(p=>`<div class="field"><label>${esc(p)} %</label><input type="number" class="splitPctInput" data-partner="${esc(p)}" value="${((DB.meta.splitPercents[p]||0)*100).toFixed(0)}" min="0" max="100" oninput="updateSplitTotalHint()"></div>`).join("")}
+        </div>
+        <p class="hint" id="splitTotalHint" style="margin:0 0 12px;"></p>
+        <button class="btn btn-primary btn-sm" onclick="saveSplitSettings()">Save</button>
+        <button class="btn btn-secondary btn-sm" onclick="migrateChrisOwnershipChange();render();toast('Re-checked — Chris removed from split if he was still in there');">Force-fix Chris/split now</button>
+      </div>
+      <div class="card card-lg" style="background:var(--surface-alt);">
+        <div class="stat-label" style="margin-bottom:12px;">Debug — current split data</div>
+        <p style="font-size:12.5px;color:var(--text-secondary);font-family:var(--font-mono);white-space:pre-wrap;">partners: ${JSON.stringify(DB.meta.partners)}
+splitPercents: ${JSON.stringify(DB.meta.splitPercents)}
+adReservePct: ${DB.meta.adReservePct}
+chrisRemovedFromSplit: ${!!DB.meta.chrisRemovedFromSplit}</p>
+      </div>
+
+      <div class="card card-lg">
+        <div class="stat-label" style="margin-bottom:12px;">Categories</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+          ${DB.meta.categories.map(c=>`<span class="tag">${esc(c)} <span style="cursor:pointer;color:var(--red);margin-left:4px;" onclick="removeCategory('${esc(c)}')">✕</span></span>`).join("")}
+        </div>
+        <div class="field-row">
+          <div class="field"><input type="text" id="newCat" placeholder="New category name"></div>
+          <button class="btn btn-secondary btn-sm" style="align-self:flex-start;margin-top:0;" onclick="addCategory()">+ Add</button>
+        </div>
+      </div>
+
+      <div class="card card-lg" style="grid-column:1/-1;">
+        <div class="stat-label" style="margin-bottom:12px;">Payments & settlement</div>
+        <p style="font-size:13px;color:var(--text-secondary);">EFT, Yoco and Ikhoka land in one central account; Payflex pays out straight to Chris. Set who holds the central account, and whether Chris is the one who pays suppliers (PUMA/others) directly — this drives the Payments & Settlement page.</p>
+        <div class="field-row">
+          <div class="field"><label>Central account holder (EFT/Yoco/Ikhoka)</label>
+            <select id="centralCollector">${DB.meta.partners.map(p=>`<option ${p===DB.meta.centralCollector?"selected":""}>${esc(p)}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label>Chris pays suppliers directly?</label>
+            <select id="chrisFronts"><option value="true" ${DB.meta.chrisFrontsSuppliers?"selected":""}>Yes</option><option value="false" ${!DB.meta.chrisFrontsSuppliers?"selected":""}>No</option></select>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveSettlementSettings()">Save</button>
+      </div>
+
+      <div class="card card-lg" style="grid-column:1/-1;">
+        <div class="stat-label" style="margin-bottom:12px;">JSONBin connection</div>
+        <p style="font-size:13px;color:var(--text-secondary);">PLS HQ stores everyone's data in one shared JSONBin bin. These values are set once in the code before publishing — see <b>SETUP.md</b> in your project files for the full walkthrough.</p>
+        <div class="field-row">
+          <div class="field"><label>Bin ID</label><input type="text" value="${jsonbinConfigured()?CONFIG.JSONBIN_BIN_ID:'not set'}" disabled></div>
+          <div class="field"><label>Status</label><input type="text" value="${syncState}" disabled></div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="saveDB(true)">Retry saving now</button>
+        <button class="btn btn-secondary btn-sm" onclick="reloadFromServer()">⟳ Reload from server</button>
+        <button class="btn btn-secondary btn-sm" onclick="downloadBackup()">⇩ Download full backup (.json)</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('importFile').click()">⇧ Import data (.json)</button>
+        <input type="file" id="importFile" accept=".json" class="hidden" onchange="importBackup(this.files[0])">
+        <p class="hint" style="margin-top:10px;">Changes you make show up on this screen straight away — you don't need to wait for the sync to finish. If it says "Retrying sync…" your entry is safe here and PLS HQ will keep trying to push it to the shared copy in the background.</p>
+      </div>
+
+      <div class="card card-lg" style="grid-column:1/-1;">
+        <div class="stat-label" style="margin-bottom:12px;">Your identity</div>
+        <p style="font-size:13px;color:var(--text-secondary);">Because this is a lightweight shared tool (no logins), pick who you are each time you open PLS HQ using the selector top-right — it tags what you add so the team knows who logged it.</p>
+      </div>
+    </div>
+  `;
+  updateSplitTotalHint();
+}
+function updateSplitTotalHint(){
+  const el = document.getElementById("splitTotalHint");
+  if(!el) return;
+  const reserve = parseFloat(document.getElementById("reservePct").value)||0;
+  let sum = reserve;
+  document.querySelectorAll(".splitPctInput").forEach(i=>{ sum += parseFloat(i.value)||0; });
+  const ok = Math.abs(sum-100) <= 0.5;
+  el.style.color = ok? "var(--text-tertiary)" : "var(--red)";
+  el.textContent = ok? `Adds up to ${sum.toFixed(0)}%` : `Adds up to ${sum.toFixed(0)}% — needs to be 100%`;
+}
+function saveSplitSettings(){
+  const reserve = parseFloat(document.getElementById("reservePct").value);
+  if(isNaN(reserve)){ toast("Enter a valid marketing reserve %"); return; }
+  const inputs = document.querySelectorAll(".splitPctInput");
+  const newSplits = {};
+  let sum = reserve;
+  inputs.forEach(el=>{
+    const v = parseFloat(el.value)||0;
+    newSplits[el.dataset.partner] = v/100;
+    sum += v;
+  });
+  if(Math.abs(sum-100) > 0.5){
+    toast(`These need to add up to 100% (marketing + shares) — currently ${sum.toFixed(1)}%`);
+    return;
+  }
+  DB.meta.adReservePct = reserve/100;
+  DB.meta.splitPercents = newSplits;
+  saveDB(true); render();
+}
+function saveSettlementSettings(){
+  DB.meta.centralCollector = document.getElementById("centralCollector").value;
+  DB.meta.chrisFrontsSuppliers = document.getElementById("chrisFronts").value==="true";
+  saveDB(true); render();
+}
+function addCategory(){
+  const v = document.getElementById("newCat").value.trim();
+  if(!v) return;
+  if(!DB.meta.categories.includes(v)) DB.meta.categories.push(v);
+  saveDB(true); render();
+}
+function removeCategory(c){
+  DB.meta.categories = DB.meta.categories.filter(x=>x!==c);
+  saveDB(true); render();
+}
+function reloadFromServer(){
+  const warning = pendingSince
+    ? "You have a change here that hasn't synced yet — reloading from the server will DISCARD it. Try \"Retry saving now\" first. Reload anyway?"
+    : "This pulls the latest saved version from JSONBin and replaces what's on this screen. Continue?";
+  if(!confirm(warning)) return;
+  loadDB().then(()=>{render();toast("Reloaded from server");});
+}
+function downloadBackup(){
+  const blob = new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `plshq-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+function importBackup(file){
+  if(!file) return;
+  if(!confirm("This will replace everything currently in PLS HQ with the contents of this file — including for the whole team, once it syncs. Continue?")) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      const incoming = JSON.parse(e.target.result);
+      if(!incoming.meta || !incoming.orders) throw new Error("Not a PLS HQ backup file");
+      DB = incoming;
+      DB.meta = Object.assign(emptyDB().meta, DB.meta||{});
+      ["orders","transactions","documents","ticketSales","reviewQueue","skuMap","payouts"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
+      migrateChrisOwnershipChange();
+      saveDB(true);
+      toast(`Imported ${DB.orders.length} orders, ${DB.transactions.length} transactions`);
+      render();
+    }catch(err){
+      toast("Couldn't read that file — is it a PLS HQ backup .json?");
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ============================================================
+   FORMS (modals)
+   ============================================================ */
+function closeModal(){ const o=document.querySelector(".overlay"); if(o) o.remove(); }
+function openModal(html){
+  closeModal();
+  const wrap=document.createElement("div");
+  wrap.className="overlay";
+  wrap.onclick=(e)=>{ if(e.target===wrap) closeModal(); };
+  wrap.innerHTML=`<div class="modal">${html}</div>`;
+  document.body.appendChild(wrap);
+}
+
+function openOrderForm(editId){
+  const o = editId? DB.orders.find(x=>x.id===editId) : null;
+  openModal(`
+    <h3>${o? "Edit order":"Add order"}</h3><p class="sub">${o? "Update the details for this order — the month tab it appears under follows the date." : `Manually log a single order line for ${selectedMonth}.`}</p>
+    <div class="field-row">
+      <div class="field"><label>Wix order no.</label><input id="f_orderNo" value="${esc(o?.orderNo||'')}"></div>
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${o?.date && !isNaN(new Date(o.date)) ? new Date(o.date).toISOString().slice(0,10) : new Date().toISOString().slice(0,10)}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Supplier order no. <span style="font-weight:400;color:var(--text-tertiary);">(PUMA's own order/PO number)</span></label><input id="f_supplierOrderNo" value="${esc(o?.supplierOrderNo||'')}"></div>
+      <div class="field"><label>Supplier / brand</label><input id="f_supplier" value="${esc(o?.supplier||'')}"></div>
+    </div>
+    <div class="field"><label>Customer</label><input id="f_customer" value="${esc(o?.customer||'')}"></div>
+    <div class="field"><label>Product</label><input id="f_product" value="${esc(o?.product||'')}"></div>
+    <div class="field-row">
+      <div class="field"><label>SKU</label><input id="f_sku" value="${esc(o?.sku||'')}"></div>
+      <div class="field"><label>Coupon used</label><input id="f_coupon" value="${esc(o?.coupon||'')}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Qty</label><input id="f_qty" type="number" min="1" step="1" value="${o?.qty||1}" oninput="autoCalcOrderTotal()"></div>
+      <div class="field"><label>Unit price (R)</label><input id="f_unitPrice" type="number" step="0.01" value="${o?.unitPrice??''}" oninput="autoCalcOrderTotal()"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Cost to client (R) — full line total</label><input id="f_costC" type="number" step="0.01" value="${o?.costToClient??''}"></div>
+      <div class="field"><label>Cost from supplier (R)</label><input id="f_costS" type="number" step="0.01" value="${o?.costSupplier??''}"></div>
+    </div>
+    <div class="field"><label>Paid via</label><select id="f_payment">${PAYMENT_METHODS.map(p=>`<option ${o?.paymentMethod===p?"selected":""}>${p}</option>`).join("")}</select></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitOrderForm(${o? `'${o.id}'` : 'null'})">${o? "Save changes":"Save order"}</button>
+    </div>
+  `);
+}
+function autoCalcOrderTotal(){
+  const qty = parseInt(val('f_qty'))||1;
+  const unit = parseFloat(val('f_unitPrice'));
+  if(!isNaN(unit)) document.getElementById('f_costC').value = Math.round(unit*qty*100)/100;
+}
+function submitOrderForm(editId){
+  const date = val('f_date');
+  const month = monthOf(date) || selectedMonth;
+  const fields = {
+    orderNo:val('f_orderNo'), supplierOrderNo:val('f_supplierOrderNo'), date, customer:val('f_customer'), supplier:val('f_supplier'),
+    product:val('f_product'), sku:val('f_sku'), coupon:val('f_coupon'), paymentMethod:val('f_payment')||"EFT",
+    qty:parseInt(val('f_qty'))||1, unitPrice:parseFloat(val('f_unitPrice'))||0,
+    costToClient:parseFloat(val('f_costC'))||0, costSupplier:parseFloat(val('f_costS'))||0
+  };
+  if(editId){
+    const existing = DB.orders.find(o=>o.id===editId);
+    if(existing) Object.assign(existing, fields, {month});
+  } else {
+    DB.orders.push({ id:uid(), month, ...fields, source:"manual", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString() });
+  }
+  closeModal(); saveDB(true); render();
+}
+
+function openTxForm(editId){
+  const t = editId? DB.transactions.find(x=>x.id===editId) : null;
+  openModal(`
+    <h3>${t? "Edit transaction":"Add transaction"}</h3><p class="sub">${t? "Update the details for this transaction." : `Log an expense or income line for ${selectedMonth}.`}</p>
+    <div class="field-row">
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${t?.date && !isNaN(new Date(t.date)) ? new Date(t.date).toISOString().slice(0,10) : new Date().toISOString().slice(0,10)}"></div>
+      <div class="field"><label>Type</label><select id="f_type"><option ${t?.type==="Expense"||!t?"selected":""}>Expense</option><option ${t?.type==="Income"?"selected":""}>Income</option></select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Category</label>
+        <select id="f_category"><option value="">Not sure — send to review</option>${DB.meta.categories.map(c=>`<option ${t?.category===c?"selected":""}>${esc(c)}</option>`).join("")}</select>
+      </div>
+      <div class="field"><label>Subcategory (vendor)</label><input id="f_subcategory" value="${esc(t?.subcategory||'')}" placeholder="e.g. Yoco, Meta Ads"></div>
+    </div>
+    <div class="field"><label>Description</label><input id="f_description" value="${esc(t?.description||'')}"></div>
+    <div class="field"><label>Amount (R)</label><input id="f_amount" type="number" step="0.01" value="${t?.amount??''}"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitTxForm(${t? `'${t.id}'` : 'null'})">${t? "Save changes":"Save transaction"}</button>
+    </div>
+  `);
+}
+function submitTxForm(editId){
+  const cat = val('f_category');
+  const base = { date:val('f_date'), type:val('f_type'), subcategory:val('f_subcategory'), description:val('f_description'), amount:parseFloat(val('f_amount'))||0 };
+  if(editId){
+    const existing = DB.transactions.find(t=>t.id===editId);
+    if(existing){
+      if(!cat){
+        DB.transactions = DB.transactions.filter(t=>t.id!==editId);
+        DB.reviewQueue.push({id:uid(), ...base, source:"manual"});
+        toast("Moved to Needs Review — no category chosen");
+      } else {
+        Object.assign(existing, base, {category:cat});
+      }
+    }
+    closeModal(); saveDB(true); render();
+    return;
+  }
+  if(!cat){
+    DB.reviewQueue.push({id:uid(), ...base, source:"manual"});
+    toast("Sent to Needs Review — no category chosen");
+  }else{
+    DB.transactions.push({id:uid(), ...base, category:cat, addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
+  }
+  closeModal(); saveDB(true); render();
+}
+
+function openTicketForm(){
+  openModal(`
+    <h3>Add ticket sale</h3><p class="sub">Pack Life Gym SOMA pass — profit flows to Chris on top of the equal split.</p>
+    <div class="field-row">
+      <div class="field"><label>Invoice no.</label><input id="f_inv"></div>
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Cost to client (R)</label><input id="f_costC" type="number" step="0.01"></div>
+      <div class="field"><label>Yoco fees (R)</label><input id="f_fees" type="number" step="0.01"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitTicketForm()">Save</button>
+    </div>
+  `);
+}
+function submitTicketForm(){
+  DB.ticketSales.push({id:uid(), invNo:val('f_inv'), date:val('f_date'), costToClient:parseFloat(val('f_costC'))||0, yocoFees:parseFloat(val('f_fees'))||0, addedBy:currentUser||"Unknown"});
+  closeModal(); saveDB(true); render();
+}
+
+function openBillForm(file){
+  const sizeOk = file ? file.size < 45000 : true;
+  openModal(`
+    <h3>Store a bill / document</h3><p class="sub">${file? esc(file.name) : "Attach a file, or just log it with a Drive link."}</p>
+    <div class="field">
+      <label>File ${file? "":"(optional — you can also just fill in the details and a Drive link below)"}</label>
+      <input type="file" id="f_file" ${file? "":""}>
+      <p class="hint" id="f_fileHint" style="margin:4px 0 0;"></p>
+    </div>
+    <div class="field"><label>Name</label><input id="f_name" value="${file?esc(file.name):''}"></div>
+    <div class="field-row">
+      <div class="field"><label>Folder</label>
+        <select id="f_folder">${DB.meta.docFolders.map(f=>`<option ${f===(selectedFolder!=='All'?selectedFolder:'General')?'selected':''}>${esc(f)}</option>`).join("")}</select>
+      </div>
+      <div class="field"><label>Category</label><select id="f_category"><option value="">Not sure — send to review</option>${DB.meta.categories.map(c=>`<option>${esc(c)}</option>`).join("")}</select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Amount (R, optional)</label><input id="f_amount" type="number" step="0.01"></div>
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    </div>
+    <div class="field"><label>Google Drive link ${file && !sizeOk? "(file's too big to store here — paste the link instead)" : "(optional — link to the file if it's already in Drive, or the upload is too large to embed)"}</label><input id="f_link" placeholder="https://drive.google.com/..."></div>
+    <div class="field"><label>Note</label><textarea id="f_note"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitBillForm()">Save</button>
+    </div>
+  `);
+  window._pendingFile = file || null;
+  const fileInput = document.getElementById("f_file");
+  if(file){
+    // A file was already handed in (e.g. dropped on the Upload Center dropzone) — reflect it, but still let them swap it.
+    updateFileHint(file);
+  }
+  fileInput.onchange = e=>{
+    const f = e.target.files[0];
+    window._pendingFile = f || null;
+    if(f && !document.getElementById("f_name").value) document.getElementById("f_name").value = f.name;
+    updateFileHint(f);
+  };
+}
+function updateFileHint(f){
+  const hint = document.getElementById("f_fileHint");
+  if(!hint) return;
+  if(!f){ hint.textContent = ""; return; }
+  hint.textContent = f.size < 45000
+    ? `${f.name} (${Math.round(f.size/1024)}KB) — will be stored directly.`
+    : `${f.name} (${Math.round(f.size/1024)}KB) — too large to store here; paste a Drive link below instead, or the file just won't attach.`;
+}
+function submitBillForm(){
+  const finish = (dataUrl, fileType) => {
+    const cat = val('f_category');
+    const doc = {
+      id:uid(), name:val('f_name')||"Untitled document", category:cat||"Uncategorized", folder:val('f_folder')||"General",
+      month:selectedMonth, note:val('f_note'), driveLink: document.getElementById('f_link')?document.getElementById('f_link').value:"",
+      dataUrl: dataUrl||"", fileType: fileType||"", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()
+    };
+    DB.documents.push(doc);
+    const amount = parseFloat(val('f_amount'));
+    if(amount){
+      if(!cat){
+        DB.reviewQueue.push({id:uid(), date:val('f_date'), description:val('f_name')||"Uploaded bill", amount, source:"document"});
+        toast("Document stored + sent amount to Needs Review");
+      }else{
+        DB.transactions.push({id:uid(), date:val('f_date'), type:"Expense", category:cat, subcategory:"", description:val('f_name')||"Uploaded bill", amount, addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
+        toast("Document stored + transaction logged");
+      }
+    } else {
+      toast("Document stored in the vault");
+    }
+    closeModal(); saveDB(true); render();
+  };
+  const f = window._pendingFile;
+  if(f && f.size < 45000){
+    const reader = new FileReader();
+    reader.onload = e => finish(e.target.result, f.type);
+    reader.readAsDataURL(f);
+  } else {
+    finish(null,null);
+  }
+}
+
+/* ---------- shared bits ---------- */
+function val(id){ const el=document.getElementById(id); return el? el.value : ""; }
+function deleteRow(collection,id){
+  if(!confirm("Remove this entry?")) return;
+  DB[collection] = DB[collection].filter(r=>r.id!==id);
+  saveDB(true); render();
+}
+function resolveReview(id){
+  const sel = document.getElementById("cat_"+id);
+  const cat = sel.value;
+  if(!cat){ toast("Choose a category first"); return; }
+  const item = DB.reviewQueue.find(r=>r.id===id);
+  DB.transactions.push({id:uid(), date:item.date, type:"Expense", category:cat, subcategory:"", description:item.description, amount:item.amount, addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
+  DB.reviewQueue = DB.reviewQueue.filter(r=>r.id!==id);
+  saveDB(true); render();
+}
+function monthTabsHTML(){
+  return `<div class="tabs">${MONTHS.map(m=>`<div class="tab ${m===selectedMonth?'active':''}" onclick="selectedMonth='${m}';document.getElementById('monthSelect').value='${m}';clearSelection();render();">${m}</div>`).join("")}</div>`;
+}
+
+/* ============================================================
+   ROUTER + INIT
+   ============================================================ */
+function render(){
+  document.querySelectorAll(".nav-item").forEach(n=>n.classList.toggle("active", n.dataset.page===page));
+  refreshReviewBadge();
+  ({
+    dashboard:renderDashboard, orders:renderOrders, transactions:renderTransactions,
+    review:renderReview, distribution:renderDistribution, upload:renderUpload,
+    vault:renderVault, settings:renderSettings, settlement:renderSettlement, suppliers:renderSuppliers
+  })[page]();
+}
+
+async function init(){
+  // month selector
+  const ms = document.getElementById("monthSelect");
+  ms.innerHTML = MONTHS.map(m=>`<option value="${m}" ${m===selectedMonth?"selected":""}>${m}</option>`).join("");
+  ms.onchange = ()=>{ selectedMonth=ms.value; clearSelection(); render(); };
+
+  const idSel = document.getElementById("identitySelect");
+  idSel.innerHTML += TEAM.map(p=>`<option value="${p}">${p}</option>`).join("") + `<option value="Other">Other</option>`;
+  idSel.onchange = ()=>{ currentUser = idSel.value; };
+
+  document.querySelectorAll(".nav-item").forEach(n=>{
+    n.onclick = ()=>{ page=n.dataset.page; clearSelection(); render(); document.getElementById("sidebar").classList.remove("open"); };
+  });
+  document.getElementById("menuBtn").onclick = ()=> document.getElementById("sidebar").classList.toggle("open");
+  if(window.innerWidth<860) document.getElementById("menuBtn").style.display="inline-flex";
+
+  await loadDB();
+  render();
+}
+init();
+</script>
+</body>
+</html>
