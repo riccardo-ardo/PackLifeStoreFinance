@@ -3,6 +3,7 @@
 import { ok, badRequest, serverError, forbidden } from 'wix-http-functions';
 import { getSecret }                    from 'wix-secrets-backend';
 import wixData                          from 'wix-data';
+import { mediaManager }                 from 'wix-media-backend';
 
 const ALLOWED_VARIABLES = [
   "customer_name", "order_number", "pickup_location", "pickup_address",
@@ -175,13 +176,108 @@ export async function get_whatsappWebhook(request) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// NEW — media handling. WhatsApp only gives you a media ID + a short-lived
+// authenticated download URL, not something a browser can display directly.
+// For images: fetch the bytes with the access token, upload them into Wix's
+// own Media Manager, and store the resulting permanent static.wixstatic.com
+// URL. Video/audio/documents need Wix's separate async "transcoding" step
+// before they're viewable, which is real added complexity — deferred for
+// now in favour of a clear, honest label instead of a silent failure.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function wixFileUrlToStaticUrl(fileUrl) {
+  // fileUrl looks like: wix:image://v1/<uri>/<filename>#originWidth=...&originHeight=...
+  const match = String(fileUrl || "").match(/wix:image:\/\/v1\/([^/]+)\//);
+  return match ? `https://static.wixstatic.com/media/${match[1]}` : null;
+}
+
+// Downloads media from Meta (using the token) and uploads it into Wix's Media
+// Manager. Returns { fileUrl, publicUrl } where:
+//  - fileUrl is Wix's permanent internal reference (wix:image://, wix:video://
+//    etc.) — never expires, safe to store forever.
+//  - publicUrl is a ready-to-use link RIGHT NOW, only for image/video —
+//    for audio/document it's null, because Wix only gives out temporary
+//    (10-hour) links for those, so we resolve a fresh one on demand instead
+//    of storing something that would quietly go dead.
+async function downloadAndStoreMedia(mediaId, token, category) {
+  try {
+    const lookupRes = await fetch(`https://graph.facebook.com/v23.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const lookup = await lookupRes.json();
+    if (!lookupRes.ok || !lookup.url) { console.warn("Media lookup failed:", JSON.stringify(lookup)); return null; }
+
+    const fileRes = await fetch(lookup.url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!fileRes.ok) { console.warn("Media download failed:", fileRes.status); return null; }
+    const arrayBuffer = await fileRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const ext = (lookup.mime_type || "").split("/")[1] || "bin";
+    const uploaded = await mediaManager.upload(
+      "/whatsapp-media",
+      buffer,
+      `wa_${mediaId}.${ext}`,
+      { mediaOptions: { mimeType: lookup.mime_type || "application/octet-stream", mediaType: category },
+        metadataOptions: { isPrivate: false, isVisitorUpload: false } }
+    );
+
+    if (category === "image") {
+      return { fileUrl: uploaded.fileUrl, publicUrl: wixFileUrlToStaticUrl(uploaded.fileUrl) };
+    }
+    if (category === "video") {
+      try {
+        const playbackUrl = await mediaManager.getVideoPlaybackUrl(uploaded.fileUrl);
+        return { fileUrl: uploaded.fileUrl, publicUrl: playbackUrl || null };
+      } catch (e) {
+        console.warn("getVideoPlaybackUrl failed, video saved but not yet playable:", e.message);
+        return { fileUrl: uploaded.fileUrl, publicUrl: null };
+      }
+    }
+    // audio / document: no stable public URL available — resolved on demand
+    return { fileUrl: uploaded.fileUrl, publicUrl: null };
+  } catch (e) {
+    console.warn("downloadAndStoreMedia failed (non-fatal, message still saves as text):", e.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /_functions/getMediaLink
+// NEW — resolves a FRESH, working link for audio/document attachments,
+// called on demand right when an agent opens one in the Inbox (rather than
+// storing a link upfront that would expire after ~10 hours).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function post_getMediaLink(request) {
+  try {
+    if (!(await checkBridgeSecret(request))) {
+      return forbidden({ headers: { "Content-Type": "application/json" },
+        body: { success: false, error: "Unauthorized" } });
+    }
+    const body = await request.body.json();
+    const fileUrl = body.fileUrl;
+    if (!fileUrl) return badRequest({ headers: { "Content-Type": "application/json" },
+      body: { success: false, error: "Missing fileUrl" } });
+
+    const url = await mediaManager.getFileUrl(fileUrl);
+    return ok({ headers: { "Content-Type": "application/json" }, body: { success: true, url } });
+  } catch (err) {
+    console.error("getMediaLink error:", err);
+    return serverError({ headers: { "Content-Type": "application/json" },
+      body: { success: false, error: err.message } });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /_functions/whatsappWebhook
 // Receives incoming WhatsApp messages AND status updates from Meta.
 // Saves messages to IncomingMessages CMS collection — EXACTLY as before.
 // CHANGED: now also (a) reads value.statuses, which used to be silently
-// discarded, and (b) mirrors both messages and statuses into Firestore for
-// the PLS HQ Inbox. Both additions are wrapped so a failure in either can
-// never affect the existing IncomingMessages write.
+// discarded, (b) mirrors both messages and statuses into Firestore for
+// the PLS HQ Inbox, and (c) downloads + stores images so they're viewable
+// instead of showing as "[media/unsupported]". All three additions are
+// wrapped so a failure in any of them can never affect the existing
+// IncomingMessages write.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function post_whatsappWebhook(request) {
@@ -214,9 +310,44 @@ export async function post_whatsappWebhook(request) {
 
     for (const msg of messages) {
       const from      = msg.from || "";
-      const text      = msg.text?.body || msg.button?.text || msg.interactive?.button_reply?.title || "[media/unsupported]";
       const timestamp = new Date(parseInt(msg.timestamp || Date.now() / 1000) * 1000);
       const msgId     = msg.id || "";
+
+      // Work out the message text/label and, where possible, a real viewable link.
+      let text = msg.text?.body || msg.button?.text || msg.interactive?.button_reply?.title || null;
+      let mediaUrl = null;
+      let mediaFileRef = null;
+      let mediaType = null;
+      if (!text) {
+        const token = await getSecret("META_WHATSAPP_TOKEN");
+        if (msg.image) {
+          mediaType = "image";
+          const stored = await downloadAndStoreMedia(msg.image.id, token, "image");
+          mediaUrl = stored?.publicUrl || null;
+          text = msg.image.caption ? `📷 ${msg.image.caption}` : (mediaUrl ? "📷 Photo" : "📷 Photo (couldn't load — open WhatsApp to view)");
+        } else if (msg.video) {
+          mediaType = "video";
+          const stored = await downloadAndStoreMedia(msg.video.id, token, "video");
+          mediaUrl = stored?.publicUrl || null;
+          text = msg.video.caption ? `🎥 ${msg.video.caption}` : (mediaUrl ? "🎥 Video" : "🎥 Sent a video (open WhatsApp to view)");
+        } else if (msg.audio || msg.voice) {
+          mediaType = "audio";
+          const stored = await downloadAndStoreMedia((msg.audio || msg.voice).id, token, "audio");
+          mediaFileRef = stored?.fileUrl || null;
+          text = mediaFileRef ? "🎤 Voice note" : "🎤 Sent a voice note (open WhatsApp to view)";
+        } else if (msg.document) {
+          mediaType = "document";
+          const stored = await downloadAndStoreMedia(msg.document.id, token, "document");
+          mediaFileRef = stored?.fileUrl || null;
+          text = `📄 ${msg.document.filename || "Document"}` + (mediaFileRef ? "" : " (couldn't load — open WhatsApp to view)");
+        } else if (msg.sticker) {
+          mediaType = "sticker"; text = "😀 Sent a sticker";
+        } else if (msg.location) {
+          mediaType = "location"; text = "📍 Shared a location";
+        } else {
+          text = "[unsupported message type]";
+        }
+      }
 
       // Look up customer name from Contacts — UNCHANGED
       let customerName = from;
@@ -261,7 +392,10 @@ export async function post_whatsappWebhook(request) {
         customerName,
         text,
         messageId: msgId,
-        timestamp: timestamp.toISOString()
+        timestamp: timestamp.toISOString(),
+        mediaUrl,
+        mediaFileRef,
+        mediaType
       });
     }
 
