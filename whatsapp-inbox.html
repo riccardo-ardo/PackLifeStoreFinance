@@ -514,6 +514,7 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-bubble-row.in .wa-bubble{background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:4px;}
 .wa-bubble-row.out .wa-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:4px;}
 .wa-bubble-row.out .wa-bubble.template{background:#3a3a3c;}
+.wa-bubble-row.out .wa-bubble.automation{background:#5a5450;}
 .wa-bubble .wb-meta{display:flex;gap:5px;align-items:center;justify-content:flex-end;margin-top:4px;font-size:10px;opacity:.7;}
 .wa-bubble-row.in .wb-meta{justify-content:flex-start;}
 .wa-tick{font-size:10px;}
@@ -1598,10 +1599,23 @@ function renderMessages(msgs){
     if(dateStr !== lastDateStr){ html += `<div class="wa-date-sep">${fmtDateSep(d)}</div>`; lastDateStr = dateStr; }
 
     const isTemplate = m.type === "template";
+    const isAutomation = m.source === "automation";
     const tick = m.direction==="out" ? statusTick(m.status) : "";
+    let labelLine = "";
+    if(isAutomation) labelLine = `<div style="font-size:10.5px;opacity:.75;margin-bottom:3px;">🤖 Automated · ${escapeHtml(m.templateName||'')}</div>`;
+    else if(isTemplate) labelLine = `<div style="font-size:10.5px;opacity:.75;margin-bottom:3px;">📄 Template: ${escapeHtml(m.templateName||'')}</div>`;
+
+    let mediaHtml = "";
+    if(m.mediaUrl && m.mediaType === "image"){
+      mediaHtml = `<img src="${escapeHtml(m.mediaUrl)}" alt="Photo" style="max-width:240px;max-height:320px;border-radius:10px;display:block;margin-bottom:6px;cursor:zoom-in;object-fit:cover;" onclick="window.open('${escapeHtml(m.mediaUrl)}','_blank')" onerror="this.outerHTML='<div style=&quot;font-size:12px;opacity:.7;margin-bottom:4px;&quot;>📷 Photo (couldn\\'t load — open WhatsApp to view)</div>';">`;
+    } else if(m.mediaType && m.mediaType !== "image"){
+      mediaHtml = ""; // video/audio/document/sticker/location have no stored file yet — the text label already explains it
+    }
+
     html += `<div class="wa-bubble-row ${m.direction}">
-      <div class="wa-bubble ${isTemplate?'template':''}">
-        ${isTemplate?`<div style="font-size:10.5px;opacity:.75;margin-bottom:3px;">📄 Template: ${escapeHtml(m.templateName||'')}</div>`:''}
+      <div class="wa-bubble ${isTemplate||isAutomation?'template':''} ${isAutomation?'automation':''}">
+        ${labelLine}
+        ${mediaHtml}
         ${escapeHtml(m.text||'')}
         <div class="wb-meta">${fmtTime(m.createdAt)} ${tick}</div>
       </div>
