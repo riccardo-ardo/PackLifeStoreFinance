@@ -518,6 +518,9 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-bubble .wb-meta{display:flex;gap:5px;align-items:center;justify-content:flex-end;margin-top:4px;font-size:10px;opacity:.7;}
 .wa-bubble-row.in .wb-meta{justify-content:flex-start;}
 .wa-tick{font-size:10px;}
+.wa-media-open-btn{display:block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:inherit;border-radius:8px;padding:8px 12px;font-size:12.5px;cursor:pointer;margin-bottom:6px;font-family:inherit;}
+.wa-bubble-row.in .wa-media-open-btn{background:var(--surface-alt);border-color:var(--border);}
+.wa-media-open-btn:disabled{opacity:.6;cursor:default;}
 
 .wa-composer{border-top:1px solid var(--border-soft);padding:12px 16px;background:var(--surface);position:sticky;bottom:0;z-index:5;}
 .wa-text-composer{display:flex;gap:8px;align-items:flex-end;}
@@ -1608,8 +1611,13 @@ function renderMessages(msgs){
     let mediaHtml = "";
     if(m.mediaUrl && m.mediaType === "image"){
       mediaHtml = `<img src="${escapeHtml(m.mediaUrl)}" alt="Photo" style="max-width:240px;max-height:320px;border-radius:10px;display:block;margin-bottom:6px;cursor:zoom-in;object-fit:cover;" onclick="window.open('${escapeHtml(m.mediaUrl)}','_blank')" onerror="this.outerHTML='<div style=&quot;font-size:12px;opacity:.7;margin-bottom:4px;&quot;>📷 Photo (couldn\\'t load — open WhatsApp to view)</div>';">`;
-    } else if(m.mediaType && m.mediaType !== "image"){
-      mediaHtml = ""; // video/audio/document/sticker/location have no stored file yet — the text label already explains it
+    } else if(m.mediaUrl && m.mediaType === "video"){
+      mediaHtml = `<video controls style="max-width:260px;max-height:320px;border-radius:10px;display:block;margin-bottom:6px;" src="${escapeHtml(m.mediaUrl)}"></video>`;
+    } else if(m.mediaFileRef && (m.mediaType === "audio" || m.mediaType === "document")){
+      const safeRef = escapeHtml(m.mediaFileRef).replace(/'/g,"\\'");
+      const icon = m.mediaType === "audio" ? "🎤" : "📄";
+      const label = m.mediaType === "audio" ? "Play voice note" : "Open document";
+      mediaHtml = `<button class="wa-media-open-btn" onclick="openMediaAttachment('${safeRef}','${m.mediaType}', this)">${icon} ${label} →</button>`;
     }
 
     html += `<div class="wa-bubble-row ${m.direction}">
@@ -1623,6 +1631,31 @@ function renderMessages(msgs){
   }
   el.innerHTML = html;
   el.scrollTop = el.scrollHeight;
+}
+async function openMediaAttachment(fileUrl, mediaType, btnEl){
+  const original = btnEl.textContent;
+  btnEl.textContent = "Loading…";
+  btnEl.disabled = true;
+  try{
+    const res = await fbFunctions.httpsCallable("getMediaLink")({ fileUrl });
+    if(mediaType === "audio"){
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.src = res.data.url;
+      audio.style.display = "block";
+      audio.style.marginTop = "6px";
+      btnEl.replaceWith(audio);
+    } else {
+      window.open(res.data.url, "_blank");
+      btnEl.textContent = original;
+      btnEl.disabled = false;
+    }
+  }catch(e){
+    console.error(e);
+    toast("Couldn't load attachment — it may no longer be available");
+    btnEl.textContent = original;
+    btnEl.disabled = false;
+  }
 }
 function statusTick(status){
   if(status==="read") return `<span class="wa-tick" style="color:#53bdeb;">✓✓</span>`;
