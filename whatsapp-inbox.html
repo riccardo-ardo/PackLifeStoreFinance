@@ -1735,11 +1735,16 @@ async function sendWaTemplate(){
     if(!val){ toast("Fill in " + (VAR_LABELS[v]||v)); return; }
     variables[v] = val;
   }
+  const conv = waConversations.find(c=>c.id===waActivePhone);
+  const firstName = ((conv?.customerName || "there").split(" ")[0]) || "there";
+  let renderedText = body.replace(/\{\{\s*customer_name\s*\}\}/gi, firstName);
+  Object.entries(variables).forEach(([k,v])=>{
+    renderedText = renderedText.replace(new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`, "gi"), v);
+  });
   try{
-    const conv = waConversations.find(c=>c.id===waActivePhone);
     await fbFunctions.httpsCallable("sendWhatsAppReply")({
       phone: waActivePhone, mode: "template", templateName: name, language: t.language || "en",
-      variables, customerName: conv?.customerName
+      variables, customerName: conv?.customerName, renderedText
     });
     toast("Template sent ✓");
   }catch(e){
