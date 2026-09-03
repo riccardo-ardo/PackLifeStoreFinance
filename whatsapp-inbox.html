@@ -1134,8 +1134,9 @@ function loadOps(){ initFirebase(); }
 const VAR_LABELS = {
   customer_name: "Customer name", order_number: "Order number", delivery_address: "Delivery address",
   tracking_number: "Tracking number", courier_name: "Courier name", pickup_location: "Pickup location",
-  pickup_address: "Pickup address", coupon_code: "Coupon code",
+  pickup_address: "Pickup address", coupon_code: "Coupon code", insert_message_here: "Your message",
 };
+const LONG_TEXT_VARS = ["insert_message_here"];
 
 let waConversations = [];   // full list from Firestore, newest first
 let waConvUnsub = null;
@@ -1691,7 +1692,11 @@ function renderTemplateVarInputs(){
   if(!t){ box.innerHTML = ""; return; }
   const body = templateBodyText(t);
   const vars = [...new Set((body.match(/\{\{\s*\w+\s*\}\}/g)||[]).map(m=>m.replace(/[{}]/g,"").trim()))].filter(v=>v!=="customer_name");
-  box.innerHTML = vars.map(v=>`<input type="text" id="waVar_${v}" placeholder="${VAR_LABELS[v]||v}">`).join("")
+  box.innerHTML = vars.map(v=>
+    LONG_TEXT_VARS.includes(v)
+      ? `<textarea id="waVar_${v}" placeholder="${VAR_LABELS[v]||v}" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:8px;"></textarea>`
+      : `<input type="text" id="waVar_${v}" placeholder="${VAR_LABELS[v]||v}">`
+  ).join("")
     + (vars.length ? '' : '<p class="hint" style="margin:0;">This template only needs {{customer_name}}, which is filled in automatically.</p>');
 }
 
