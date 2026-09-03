@@ -1125,14 +1125,12 @@ function loadOps(){ initFirebase(); }
    PLS HQ — WhatsApp Inbox (Phase 1)
    ============================================================ */
 
-const TEMPLATE_SCHEMA = {
-  order_confirmation:  { lang: "en_US", vars: ["customer_name", "order_number"] },
-  order_shipped:        { lang: "en",    vars: ["customer_name", "order_number", "delivery_address", "tracking_number", "courier_name"] },
-  order_pick_up:        { lang: "en",    vars: ["customer_name", "order_number", "pickup_location", "pickup_address"] },
-  review_request:       { lang: "en",    vars: ["customer_name"] },
-  collection_reminder:  { lang: "en",    vars: ["customer_name", "order_number", "pickup_location", "pickup_address"] },
-  coupon_reminder:      { lang: "en",    vars: ["customer_name", "coupon_code"] },
-};
+// NOTE: the reopen-conversation picker and batch send both now pull their
+// template list live from waTemplates (synced from Meta via getTemplates),
+// not a hardcoded list — so new approved templates show up automatically,
+// no code changes needed. VAR_LABELS just makes variable prompts friendlier
+// when we happen to recognize the name; anything else falls back to the
+// raw variable name.
 const VAR_LABELS = {
   customer_name: "Customer name", order_number: "Order number", delivery_address: "Delivery address",
   tracking_number: "Tracking number", courier_name: "Courier name", pickup_location: "Pickup location",
@@ -1677,16 +1675,24 @@ function updateComposerState(conv){
 }
 function fillTemplatePicker(){
   const sel = document.getElementById("waTemplatePicker");
-  sel.innerHTML = '<option value="">Choose a template…</option>' + Object.keys(TEMPLATE_SCHEMA).map(t=>`<option value="${t}">${t}</option>`).join("");
+  const usable = (waTemplates||[]).filter(t=>(t.status||"").toUpperCase()==="APPROVED" && !templateIncompatibilityReason(t));
+  sel.innerHTML = '<option value="">Choose a template…</option>' + usable.map(t=>`<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)}</option>`).join("")
+    || '<option value="">Choose a template…</option>';
+  if(!waTemplatesLoaded){
+    loadTemplates().then(()=>fillTemplatePicker());
+  }
   sel.onchange = renderTemplateVarInputs;
   document.getElementById("waTemplateVars").innerHTML = "";
 }
 function renderTemplateVarInputs(){
   const name = document.getElementById("waTemplatePicker").value;
   const box = document.getElementById("waTemplateVars");
-  if(!name){ box.innerHTML = ""; return; }
-  const schema = TEMPLATE_SCHEMA[name];
-  box.innerHTML = schema.vars.map(v=>`<input type="text" id="waVar_${v}" placeholder="${VAR_LABELS[v]||v}">`).join("");
+  const t = (waTemplates||[]).find(t=>t.name===name);
+  if(!t){ box.innerHTML = ""; return; }
+  const body = templateBodyText(t);
+  const vars = [...new Set((body.match(/\{\{\s*\w+\s*\}\}/g)||[]).map(m=>m.replace(/[{}]/g,"").trim()))].filter(v=>v!=="customer_name");
+  box.innerHTML = vars.map(v=>`<input type="text" id="waVar_${v}" placeholder="${VAR_LABELS[v]||v}">`).join("")
+    + (vars.length ? '' : '<p class="hint" style="margin:0;">This template only needs {{customer_name}}, which is filled in automatically.</p>');
 }
 
 async function sendWaText(){
@@ -1714,9 +1720,12 @@ document.getElementById("waReplyText").addEventListener("keydown", e=>{
 async function sendWaTemplate(){
   const name = document.getElementById("waTemplatePicker").value;
   if(!name){ toast("Choose a template first"); return; }
-  const schema = TEMPLATE_SCHEMA[name];
+  const t = (waTemplates||[]).find(t=>t.name===name);
+  if(!t){ toast("Couldn't find that template — try refreshing"); return; }
+  const body = templateBodyText(t);
+  const vars = [...new Set((body.match(/\{\{\s*\w+\s*\}\}/g)||[]).map(m=>m.replace(/[{}]/g,"").trim()))].filter(v=>v!=="customer_name");
   const variables = {};
-  for(const v of schema.vars){
+  for(const v of vars){
     const val = document.getElementById("waVar_"+v).value.trim();
     if(!val){ toast("Fill in " + (VAR_LABELS[v]||v)); return; }
     variables[v] = val;
@@ -1724,7 +1733,7 @@ async function sendWaTemplate(){
   try{
     const conv = waConversations.find(c=>c.id===waActivePhone);
     await fbFunctions.httpsCallable("sendWhatsAppReply")({
-      phone: waActivePhone, mode: "template", templateName: name, language: schema.lang,
+      phone: waActivePhone, mode: "template", templateName: name, language: t.language || "en",
       variables, customerName: conv?.customerName
     });
     toast("Template sent ✓");
