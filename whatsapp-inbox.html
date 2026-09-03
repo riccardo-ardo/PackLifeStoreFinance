@@ -814,6 +814,8 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
             </div>
 
             <div class="wa-cust-note">Full order history, lifetime spend, and tracking details are coming in a later phase — for now this panel shows what PLS HQ already knows about the conversation itself.</div>
+
+            <button class="cvt-btn" style="width:100%;margin-top:16px;background:var(--red-soft);color:var(--red);border:1px solid #F5C6C6;" onclick="deleteConversation()">🗑 Delete conversation</button>
           </div>
         </div>
       </div>
@@ -1737,6 +1739,29 @@ function setConvStatus(status){
   fbDb.collection("whatsapp_conversations").doc(waActivePhone).update({ status }).catch(e=>{
     console.error(e); toast("Couldn't update status");
   });
+}
+
+async function deleteConversation(){
+  if(!waActivePhone) return;
+  const conv = waConversations.find(c=>c.id===waActivePhone);
+  const name = conv?.customerName || waActivePhone;
+  const ok = confirm(`Delete the entire conversation with ${name}?\n\nThis removes it from PLS HQ permanently and can't be undone. Your original records in Wix (IncomingMessages, WhatsAppLogs) are not affected — this only clears the PLS HQ view.`);
+  if(!ok) return;
+  const phoneToDelete = waActivePhone;
+  try{
+    await fbFunctions.httpsCallable("deleteConversation")({ phone: phoneToDelete });
+    toast("Conversation deleted");
+    if(waMsgUnsub) waMsgUnsub();
+    if(waNotesUnsub) waNotesUnsub();
+    waActivePhone = null;
+    document.getElementById("waThreadActive").classList.add("hidden");
+    document.getElementById("waThreadEmpty").classList.remove("hidden");
+    document.getElementById("waCustomerPanel").classList.add("hidden");
+    document.getElementById("waCustomerEmpty").classList.remove("hidden");
+  }catch(e){
+    console.error(e);
+    toast("Couldn't delete conversation: " + (e.message||""));
+  }
 }
 
 /* ---------------- assignment ---------------- */
