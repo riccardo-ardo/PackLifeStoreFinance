@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PLS HQ — WhatsApp</title>
+<title>PLS HQ — Dashboard</title>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-functions-compat.js"></script>
+
 <style>
 /* ============================================================
    PLS HQ — design tokens
@@ -471,8 +471,9 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .signed-in-row button:hover{color:var(--red);}
 
 /* ---------- WhatsApp Inbox ---------- */
-.wa-shell{display:grid;grid-template-columns:300px 1fr 260px;gap:0;height:75vh;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);}.wa-col-list{border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0;}
-.wa-col-thread{display:flex;flex-direction:column;min-width:0;overflow-y:auto;}
+.wa-shell{display:grid;grid-template-columns:300px 1fr 260px;gap:0;height:calc(100vh - 110px);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;background:var(--surface);}
+.wa-col-list{border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0;}
+.wa-col-thread{display:flex;flex-direction:column;min-width:0;}
 .wa-col-customer{border-left:1px solid var(--border);background:var(--surface-alt);padding:18px;overflow-y:auto;}
 
 .wa-list-head{padding:14px;border-bottom:1px solid var(--border-soft);}
@@ -501,11 +502,11 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-empty .t{font-weight:700;font-size:14px;color:var(--text-secondary);}
 .wa-empty .s{font-size:12.5px;margin-top:4px;max-width:220px;}
 
-.wa-thread-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border-soft);position:sticky;top:0;z-index:5;background:var(--surface);}
+.wa-thread-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border-soft);}
 .wa-thread-name{font-weight:700;font-size:14.5px;}
 .wa-thread-phone{font-size:11.5px;color:var(--text-tertiary);font-family:var(--font-mono);}
 
-.wa-messages{padding:18px;display:flex;flex-direction:column;gap:4px;background:var(--bg);min-height:400px;}
+.wa-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:4px;background:var(--bg);}
 .wa-date-sep{text-align:center;font-size:11px;color:var(--text-tertiary);margin:14px 0 8px;font-weight:600;}
 .wa-bubble-row{display:flex;margin-bottom:2px;}
 .wa-bubble-row.in{justify-content:flex-start;}
@@ -514,15 +515,11 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-bubble-row.in .wa-bubble{background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:4px;}
 .wa-bubble-row.out .wa-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:4px;}
 .wa-bubble-row.out .wa-bubble.template{background:#3a3a3c;}
-.wa-bubble-row.out .wa-bubble.automation{background:#5a5450;}
 .wa-bubble .wb-meta{display:flex;gap:5px;align-items:center;justify-content:flex-end;margin-top:4px;font-size:10px;opacity:.7;}
 .wa-bubble-row.in .wb-meta{justify-content:flex-start;}
 .wa-tick{font-size:10px;}
-.wa-media-open-btn{display:block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:inherit;border-radius:8px;padding:8px 12px;font-size:12.5px;cursor:pointer;margin-bottom:6px;font-family:inherit;}
-.wa-bubble-row.in .wa-media-open-btn{background:var(--surface-alt);border-color:var(--border);}
-.wa-media-open-btn:disabled{opacity:.6;cursor:default;}
 
-.wa-composer{border-top:1px solid var(--border-soft);padding:12px 16px;background:var(--surface);position:sticky;bottom:0;z-index:5;}
+.wa-composer{border-top:1px solid var(--border-soft);padding:12px 16px;background:var(--surface);}
 .wa-text-composer{display:flex;gap:8px;align-items:flex-end;}
 .wa-text-composer textarea{flex:1;resize:none;border:1px solid var(--border);border-radius:12px;padding:9px 13px;font-size:13.5px;max-height:120px;font-family:inherit;}
 .wa-send-btn{background:var(--accent);color:#fff;border:none;width:38px;height:38px;border-radius:50%;font-size:15px;cursor:pointer;flex:0 0 auto;}
@@ -542,14 +539,11 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-cust-note{font-size:11.5px;color:var(--text-tertiary);line-height:1.6;margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft);}
 
 @media (max-width:1000px){
-  .wa-shell{grid-template-columns:1fr;}
+  .wa-shell{grid-template-columns:1fr;height:calc(100vh - 90px);}
   .wa-col-customer{display:none;}
   .wa-col-list.wa-mobile-hidden{display:none;}
   .wa-col-thread.wa-mobile-hidden{display:none;}
 }
-
-#waTab-inbox{display:flex;flex-direction:column;}
-#waTab-inbox.hidden{display:none;}
 
 /* ---------- WhatsApp Inbox Phase 2 ---------- */
 .wa-filter-row2{display:flex;gap:6px;margin-top:8px;}
@@ -631,17 +625,6 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-batch-var-input{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;margin-bottom:8px;}
 
 .nav-item{text-decoration:none;}
-/* This page only. Scoped to this file — these selectors are shared
-   page-shell elements, so none of this touches the other HQ pages.
-
-   Deliberately conservative: the page is always allowed to scroll
-   normally as a fallback (html/body/#app/.main/.content are untouched).
-   Only .wa-col-thread scrolls internally (see extra_css.css), so the
-   composer can stay pinned to the bottom of that column via
-   position:sticky — a single, safe scroll boundary, never a nested
-   overflow:hidden trap. Customers/Templates lists get their own
-   internal scroll too, purely for convenience. */
-#waTab-customers, #waTab-templates { max-height: 70vh; overflow-y: auto; }
 
 </style>
 </head>
@@ -658,8 +641,8 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 
     <div class="nav-group">
       <div class="nav-label">Workspace</div>
-      <a class="nav-item" href="hub.html"><span class="ic">◈</span>Dashboard</a>
-      <a class="nav-item active" href="whatsapp-inbox.html"><span class="ic">💬</span>WhatsApp <span class="nav-badge" id="waUnreadBadge" style="display:none;"></span></a>
+      <a class="nav-item active" href="hub.html"><span class="ic">◈</span>Dashboard</a>
+      <a class="nav-item" href="whatsapp-inbox.html"><span class="ic">💬</span>WhatsApp <span class="nav-badge" id="waUnreadBadge" style="display:none;"></span></a>
       <a class="nav-item" href="index_2.html"><span class="ic">💰</span>Finances</a>
       <a class="nav-item" href="PUMA_to_WIX_Converter.html"><span class="ic">⇄</span>PUMA → WIX Converter</a>
       <a class="nav-item" href="daily-updates.html"><span class="ic">📋</span>Daily Updates</a>
@@ -677,7 +660,7 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
   <div class="main">
     <div class="topbar">
       <button class="btn-ghost" id="menuBtn" style="display:none;font-size:18px;">☰</button>
-      <div class="page-title">WhatsApp</div>
+      <div class="page-title">Dashboard</div>
       <div class="spacer"></div>
       <div class="signed-in-row" id="signedInRow">
         <span id="signedInAs">–</span>
@@ -687,228 +670,122 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
     <div class="content" id="content">
 
       <div class="setup-banner" id="setupBanner" style="display:none;">
-        <b>⚠ Shared login isn't set up yet</b> — see the banner on the <a href="hub.html">Dashboard</a> for setup steps. Until then, this page can't load any conversations.
+        <b>⚠ Shared login isn't set up yet.</b> Daily Updates, Social Media, Contacts, Announcements and Quick Links need a free
+        <a href="https://console.firebase.google.com" target="_blank">Firebase</a> project so everyone can sign in and sync live. Takes about 5 minutes, one time:
+        <ol style="margin:8px 0 4px 18px;padding:0;">
+          <li>Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → <b>Add project</b> (free, no card needed) → any name, e.g. <code>pls-hq</code></li>
+          <li><b>Build → Firestore Database → Create database</b> → pick any region → start in <b>production mode</b></li>
+          <li><b>Build → Authentication → Get started</b> → enable the <b>Email/Password</b> provider</li>
+          <li>Still in Authentication, click <b>Users → Add user</b> and create one login per team member (their email + a password you choose) — e.g. <code>riccardo@packlifestore.com</code></li>
+          <li>In <b>Firestore → Rules</b>, replace the rules with:<br>
+            <code style="display:block;white-space:pre;margin-top:4px;">rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    match /pls_ops/{doc} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}</code>
+            then click <b>Publish</b>
+          </li>
+          <li>Click the <b>⚙ gear → Project settings</b>, scroll to "Your apps", click <b>&lt;/&gt; (Web)</b>, register an app (any nickname) — you'll get a config object with <code>apiKey</code>, <code>authDomain</code>, <code>projectId</code>, <code>storageBucket</code>, <code>messagingSenderId</code>, <code>appId</code></li>
+          <li>Paste all six values into the <code>FIREBASE_CONFIG</code> block near the top of the <code>&lt;script&gt;</code> in <b>this file, daily-updates.html, social-media.html and contacts.html</b> — same values in all four</li>
+          <li>Open <code>firebase_sync_core.js</code>'s <code>TEAM_EMAIL_MAP</code> and match each email to the display name you want shown (defaults to Riccardo / Anna / Chris)</li>
+        </ol>
+        Until then, everything you add here only shows up on your own screen, and no login is required.
       </div>
 
-      <div class="tabs2">
-        <div class="tab2 active" data-tab="inbox" onclick="switchWaTopTab('inbox')">Inbox</div>
-        <div class="tab2" data-tab="customers" onclick="switchWaTopTab('customers')">Customers</div>
-        <div class="tab2" data-tab="templates" onclick="switchWaTopTab('templates')">Templates</div>
+
+      <div class="hub-hero">
+        <h1 id="greeting">Good morning, team.</h1>
+        <p>Everything Pack Life Store runs on, in one place — finances, stock, socials, suppliers and the daily grind.</p>
+        <div class="clock" id="clock"></div>
       </div>
 
-      <div id="waTab-inbox">
-      <div class="wa-shell">
-        <div class="wa-col-list">
-          <div class="wa-list-head">
-            <input type="text" id="waSearch" placeholder="Search conversations…">
-            <div class="wa-filter-tabs">
-              <div class="wa-filter active" data-filter="all" onclick="setWaFilter('all')">All</div>
-              <div class="wa-filter" data-filter="unread" onclick="setWaFilter('unread')">Unread</div>
-              <div class="wa-filter" data-filter="mine" onclick="setWaFilter('mine')">Assigned to me</div>
-            </div>
-            <div class="wa-filter-row2">
-              <select id="waStatusFilter" onchange="renderConvList()">
-                <option value="">Any status</option>
-                <option value="open">Open</option>
-                <option value="waiting_customer">Waiting on customer</option>
-                <option value="waiting_internal">Waiting internally</option>
-                <option value="resolved">Resolved</option>
-              </select>
-              <select id="waTagFilter" onchange="renderConvList()">
-                <option value="">Any tag</option>
-              </select>
-            </div>
-          </div>
-          <div id="waConvList" class="wa-conv-list"></div>
-        </div>
-
-        <div class="wa-col-thread">
-          <div id="waThreadEmpty" class="wa-empty">
-            <div class="ic">💬</div>
-            <div class="t">Select a conversation</div>
-            <div class="s">Customer messages will appear here as they come in.</div>
-          </div>
-          <div id="waThreadActive" class="hidden" style="display:flex;flex-direction:column;">
-            <div class="wa-thread-head">
-              <div class="feed-avatar" id="waThreadAvatar"></div>
-              <div style="flex:1;min-width:0;">
-                <div class="wa-thread-name" id="waThreadName"></div>
-                <div class="wa-thread-phone" id="waThreadPhone"></div>
-              </div>
-            </div>
-            <div class="wa-messages" id="waMessages"></div>
-            <div class="wa-composer" id="waComposer">
-              <div id="waWindowExpired" class="wa-window-expired hidden">
-                <div class="t">24-hour reply window expired</div>
-                <div class="s">Send an approved template to reopen this conversation.</div>
-                <select id="waTemplatePicker">
-                  <option value="">Choose a template…</option>
-                </select>
-                <div id="waTemplateVars"></div>
-                <button class="cvt-btn accent" style="width:auto;padding:8px 18px;margin-top:8px;" onclick="sendWaTemplate()">Send template</button>
-              </div>
-              <div id="waTextComposer" class="wa-text-composer">
-                <div class="wa-quick-wrap">
-                  <button class="wa-quick-btn" onclick="toggleQuickReplies()" title="Quick replies">⚡</button>
-                  <div id="waQuickRepliesMenu" class="wa-quick-menu hidden"></div>
-                </div>
-                <textarea id="waReplyText" placeholder="Type a reply…" rows="1"></textarea>
-                <button class="wa-send-btn" onclick="sendWaText()" id="waSendBtn">➤</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="wa-col-customer">
-          <div id="waCustomerEmpty" class="wa-empty" style="padding-top:60px;">
-            <div class="ic">👤</div>
-            <div class="s">No conversation selected</div>
-          </div>
-          <div id="waCustomerPanel" class="hidden">
-            <div class="wa-cust-avatar" id="waCustAvatar"></div>
-            <div class="wa-cust-name" id="waCustName"></div>
-            <div class="wa-cust-phone" id="waCustPhone"></div>
-
-            <div class="wa-cust-section">
-              <div class="wa-cust-label">Status</div>
-              <select id="waConvStatus" onchange="setConvStatus(this.value)">
-                <option value="open">Open</option>
-                <option value="waiting_customer">Waiting on customer</option>
-                <option value="waiting_internal">Waiting internally</option>
-                <option value="resolved">Resolved</option>
-              </select>
-            </div>
-
-            <div class="wa-cust-section">
-              <div class="wa-cust-label">Assigned to</div>
-              <select id="waConvAssignee" onchange="setConvAssignee(this.value)">
-                <option value="">Unassigned</option>
-              </select>
-            </div>
-
-            <div class="wa-cust-section">
-              <div class="wa-cust-label">Tags</div>
-              <div id="waTagChips" class="wa-tag-chips"></div>
-              <div class="wa-tag-add">
-                <select id="waTagPicker">
-                  <option value="">+ Add tag…</option>
-                  <option>Order query</option>
-                  <option>Returns</option>
-                  <option>Exchange</option>
-                  <option>Sizing</option>
-                  <option>Product question</option>
-                  <option>Delivery</option>
-                  <option>Payment</option>
-                  <option>VIP</option>
-                  <option>Complaint</option>
-                  <option>Sales lead</option>
-                </select>
-                <button class="icon-btn" onclick="addTagFromPicker()">＋</button>
-              </div>
-            </div>
-
-            <div class="wa-cust-section">
-              <div class="wa-cust-label">Internal notes <span class="hint">Never sent to the customer</span></div>
-              <div id="waNotesList"></div>
-              <textarea id="waNoteInput" placeholder="Add an internal note…" rows="2"></textarea>
-              <button class="cvt-btn" style="width:auto;padding:6px 14px;font-size:12px;margin-top:6px;" onclick="addNote()">Add note</button>
-            </div>
-
-            <div class="wa-cust-note">Full order history, lifetime spend, and tracking details are coming in a later phase — for now this panel shows what PLS HQ already knows about the conversation itself.</div>
-
-            <button class="cvt-btn" style="width:100%;margin-top:16px;background:var(--red-soft);color:var(--red);border:1px solid #F5C6C6;" onclick="deleteConversation()">🗑 Delete conversation</button>
-          </div>
-        </div>
+      <div class="section-head" style="margin-top:0;">
+        <h2>Jump to</h2>
       </div>
-      </div>
-
-      <div id="waTab-customers" class="hidden">
-        <div class="cvt-card">
-          <div class="section-head" style="margin:0 0 12px;">
-            <h2>Add a contact</h2>
-            <span class="hint">For leads or people not yet in your Wix Contacts</span>
-          </div>
-          <div class="field-row">
-            <div class="field"><label>Full name</label><input type="text" id="waNewContactName" placeholder="e.g. Sarah Jacobs — first name is used to personalize messages"></div>
-            <div class="field"><label>Phone</label><input type="text" id="waNewContactPhone" placeholder="e.g. 082 123 4567"></div>
-            <div class="field"><label>Notes</label><input type="text" id="waNewContactNotes" placeholder="Optional"></div>
-          </div>
-          <button class="cvt-btn accent" style="width:auto;padding:8px 18px;" onclick="addManualContact()">Add contact</button>
-        </div>
-
-        <div class="section-head">
-          <h2>Contacts</h2>
-          <span class="hint" id="waContactsCount"></span>
-          <div class="spacer"></div>
-          <input type="text" id="waContactsSearch" placeholder="Search name or phone…" style="max-width:220px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;">
-          <button class="cvt-btn" style="width:auto;padding:7px 14px;margin-left:8px;" onclick="loadContacts()">↻ Refresh from Wix</button>
-        </div>
-        <div id="waSelectedBar" class="wa-selected-bar hidden">
-          <span id="waSelectedCount"></span>
-          <button class="cvt-btn accent" style="width:auto;padding:6px 16px;" onclick="openBatchSendModal()">Send template to selected →</button>
-          <button class="icon-btn" onclick="clearContactSelection()">Clear</button>
-        </div>
-        <div id="waContactsList"></div>
-      </div>
-
-      <div id="waTab-templates" class="hidden">
-        <div class="section-head" style="margin-top:0;">
-          <h2>Templates</h2>
-          <span class="hint">Pulled live from Meta — approval status is controlled by Meta, not PLS HQ</span>
-          <div class="spacer"></div>
-          <button class="cvt-btn" style="width:auto;padding:7px 14px;" onclick="loadTemplates()">↻ Refresh from Meta</button>
-        </div>
-        <div id="waTemplatesList"></div>
-      </div>
-
-      <div id="waQuickManageModal" class="wa-modal-backdrop hidden">
-        <div class="wa-modal">
-          <div class="wa-modal-head">
-            <h2>Quick Replies</h2>
-            <button class="icon-btn" onclick="closeQuickManage()">✕</button>
-          </div>
-          <p class="hint" style="margin:0 0 12px;">Available variables: {{first_name}}. Selecting a reply inserts it into the composer for editing — it's never sent automatically.</p>
-          <div id="waQuickManageList"></div>
-          <div class="wa-quick-add-form">
-            <input type="text" id="waQuickTitle" placeholder="Label, e.g. Tracking">
-            <textarea id="waQuickBody" placeholder="Hi {{first_name}}, here's your tracking info…" rows="2"></textarea>
-            <button class="cvt-btn accent" style="width:auto;padding:7px 16px;" onclick="saveQuickReply()">Save quick reply</button>
-          </div>
+      <div class="launch-grid">
+        <a class="launch-card" href="index_2.html">
+          <div class="lc-icon" style="background:linear-gradient(135deg,#2FA84F,#1f7a3a);">💰</div>
+          <div class="lc-title">Finances</div>
+          <div class="lc-desc">Orders, supplier payments, transactions, settlements &amp; the shareholder split.</div>
+          <span class="lc-tag" style="background:var(--green-soft);color:var(--green);">Money tracking</span>
+          <span class="lc-arrow">↗</span>
+        </a>
+        <a class="launch-card" href="PUMA_to_WIX_Converter.html">
+          <div class="lc-icon" style="background:linear-gradient(135deg,#FF5C35,#c93a20);">⇄</div>
+          <div class="lc-title">PUMA → WIX Converter</div>
+          <div class="lc-desc">Turn today's PUMA stock file into a Wix-ready product &amp; inventory import.</div>
+          <span class="lc-tag" style="background:var(--accent-soft);color:var(--accent-deep);">Stock tool</span>
+          <span class="lc-arrow">↗</span>
+        </a>
+        <a class="launch-card" href="daily-updates.html">
+          <div class="lc-icon" style="background:linear-gradient(135deg,#0071E3,#0b4e8c);">📋</div>
+          <div class="lc-title">Daily Updates</div>
+          <div class="lc-desc">A running log anyone can read and add to — what happened, what's next.</div>
+          <span class="lc-tag" style="background:var(--blue-soft);color:var(--blue);">Team log · <span id="tagUpdatesCount">–</span> today</span>
+          <span class="lc-arrow">↗</span>
+        </a>
+        <a class="launch-card" href="social-media.html">
+          <div class="lc-icon" style="background:linear-gradient(135deg,#AF52DE,#7d2fae);">📣</div>
+          <div class="lc-title">Social Media</div>
+          <div class="lc-desc">Content calendar, post status, captions and platform strategy notes.</div>
+          <span class="lc-tag" style="background:#F3E8FC;color:#7d2fae;"><span id="tagPostsCount">–</span> scheduled</span>
+          <span class="lc-arrow">↗</span>
+        </a>
+        <a class="launch-card" href="contacts.html">
+          <div class="lc-icon" style="background:linear-gradient(135deg,#FF9F0A,#b4690e);">☎</div>
+          <div class="lc-title">Contacts</div>
+          <div class="lc-desc">Supplier contact details and the internal team directory, all in one list.</div>
+          <span class="lc-tag" style="background:var(--amber-soft);color:#B4690E;"><span id="tagContactsCount">–</span> saved</span>
+          <span class="lc-arrow">↗</span>
+        </a>
+        <div class="launch-card" style="cursor:default;" id="tasksSummaryCard">
+          <div class="lc-icon" style="background:linear-gradient(135deg,#5856D6,#38369e);">✓</div>
+          <div class="lc-title">Task Board</div>
+          <div class="lc-desc" id="tasksSummaryDesc">Loading…</div>
+          <span class="lc-tag" style="background:#EDECFB;color:#38369e;">Scroll down ↓</span>
         </div>
       </div>
 
-      <div id="waTemplateEditModal" class="wa-modal-backdrop hidden">
-        <div class="wa-modal">
-          <div class="wa-modal-head">
-            <h2>Edit template</h2>
-            <button class="icon-btn" onclick="closeTemplateEdit()">✕</button>
+      <div class="widget-grid" style="margin-top:26px;">
+        <div class="card card-lg">
+          <div class="section-head" style="margin:0 0 4px;">
+            <h2>Task Board</h2>
+            <span class="hint">Shared with everyone — drag cards between columns</span>
           </div>
-          <div id="waTemplateEditWarning" class="setup-banner" style="display:none;margin-bottom:12px;">
-            This template is <b>Approved</b>. Editing its body text will send it back to Meta for re-review, and it can't be used to send messages while pending.
+          <div class="board" id="board"></div>
+          <div class="quick-add">
+            <input type="text" id="taskInput" placeholder="Add a task and press Enter…">
+            <select class="pill-select" id="taskAssignee" style="padding:8px 26px 8px 10px;"></select>
+            <button class="btn btn-primary" onclick="addTask()">Add</button>
           </div>
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-tertiary);">Body text</label>
-          <textarea id="waTemplateEditBody" rows="5" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:6px;font-family:inherit;"></textarea>
-          <div id="waTemplateEditResult" style="margin-top:10px;font-size:12.5px;"></div>
-          <button class="cvt-btn accent" style="width:auto;padding:8px 18px;margin-top:12px;" onclick="submitTemplateEdit()">Submit edit to Meta</button>
         </div>
-      </div>
 
-      <div id="waBatchSendModal" class="wa-modal-backdrop hidden">
-        <div class="wa-modal">
-          <div class="wa-modal-head">
-            <h2>Send template to <span id="waBatchCount"></span> contacts</h2>
-            <button class="icon-btn" onclick="closeBatchSendModal()">✕</button>
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div class="card">
+            <div class="section-head" style="margin:0 0 4px;">
+              <h2>Announcements</h2>
+            </div>
+            <div id="announceFeed"></div>
+            <div class="quick-add">
+              <input type="text" id="announceInput" placeholder="Post an announcement…">
+              <button class="btn btn-primary btn-sm" onclick="addAnnouncement()">Post</button>
+            </div>
           </div>
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-tertiary);">Template</label>
-          <select id="waBatchTemplate" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin:6px 0 12px;"></select>
-          <div id="waBatchVarInputs"></div>
-          <div id="waBatchWarning" class="setup-banner" style="display:none;margin-top:10px;"></div>
-          <div id="waBatchProgress" class="hidden" style="margin-top:12px;">
-            <div class="progress-bar" style="height:6px;background:#eae6db;border-radius:99px;overflow:hidden;"><div id="waBatchProgressFill" style="height:100%;background:var(--accent);width:0%;transition:width .2s;"></div></div>
-            <div id="waBatchProgressText" class="hint" style="margin-top:6px;"></div>
-            <div id="waBatchResults" style="max-height:160px;overflow-y:auto;"></div>
+
+          <div class="card">
+            <div class="section-head" style="margin:0 0 4px;">
+              <h2>Quick Links</h2>
+            </div>
+            <div id="quickLinksList"></div>
+            <div class="quick-add">
+              <input type="text" id="qlLabel" placeholder="Label" style="max-width:96px;">
+              <input type="text" id="qlUrl" placeholder="https://…">
+              <button class="btn btn-primary btn-sm" onclick="addQuickLink()">＋</button>
+            </div>
           </div>
-          <button class="cvt-btn accent" style="width:auto;padding:9px 20px;margin-top:14px;" id="waBatchSendBtn" onclick="runBatchSend()">Send now</button>
         </div>
       </div>
 
@@ -1122,845 +999,130 @@ function renderAllSafe(){ try{ renderAll(); }catch(e){ console.error(e); } }
 
 function loadOps(){ initFirebase(); }
 
-/* ============================================================
-   PLS HQ — WhatsApp Inbox (Phase 1)
-   ============================================================ */
+function currentIdentity(){ return localStorage.getItem("pls_identity") || "Someone"; }
 
-// NOTE: the reopen-conversation picker and batch send both now pull their
-// template list live from waTemplates (synced from Meta via getTemplates),
-// not a hardcoded list — so new approved templates show up automatically,
-// no code changes needed. VAR_LABELS just makes variable prompts friendlier
-// when we happen to recognize the name; anything else falls back to the
-// raw variable name.
-const VAR_LABELS = {
-  customer_name: "Customer name", order_number: "Order number", delivery_address: "Delivery address",
-  tracking_number: "Tracking number", courier_name: "Courier name", pickup_location: "Pickup location",
-  pickup_address: "Pickup address", coupon_code: "Coupon code", insert_message_here: "Your message",
-};
-const LONG_TEXT_VARS = ["insert_message_here"];
-
-let waConversations = [];   // full list from Firestore, newest first
-let waConvUnsub = null;
-let waMsgUnsub = null;
-let waNotesUnsub = null;
-let waActivePhone = null;
-let waFilter = "all";
-let fbFunctions = null;
-let lastKnownTotalUnread = 0;
-let notifiedMessageIds = new Set();
-
-const STATUS_LABEL = { open: "Open", waiting_customer: "Waiting on customer", waiting_internal: "Waiting internally", resolved: "Resolved" };
-
-function fmtTime(ts){
-  if(!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" });
+function renderGreeting(){
+  const h = new Date().getHours();
+  const g = h<12?"Good morning":h<18?"Good afternoon":"Good evening";
+  const name = localStorage.getItem("pls_identity");
+  document.getElementById("greeting").textContent = g + (name? ", "+name+"." : ", team.");
+  document.getElementById("clock").textContent = new Date().toLocaleString("en-ZA",{weekday:"long", year:"numeric", month:"long", day:"numeric", hour:"2-digit", minute:"2-digit"});
 }
-function fmtListTime(ts){
-  if(!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const today = new Date();
-  if(d.toDateString() === today.toDateString()) return d.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" });
-  const yest = new Date(today); yest.setDate(yest.getDate() - 1);
-  if(d.toDateString() === yest.toDateString()) return "Yesterday";
-  return d.toLocaleDateString("en-ZA", { month: "short", day: "numeric" });
-}
-function fmtDateSep(ts){
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const today = new Date();
-  if(d.toDateString() === today.toDateString()) return "Today";
-  const yest = new Date(today); yest.setDate(yest.getDate() - 1);
-  if(d.toDateString() === yest.toDateString()) return "Yesterday";
-  return d.toLocaleDateString("en-ZA", { weekday: "long", month: "long", day: "numeric" });
-}
+setInterval(()=>{ document.getElementById("clock").textContent = new Date().toLocaleString("en-ZA",{weekday:"long", year:"numeric", month:"long", day:"numeric", hour:"2-digit", minute:"2-digit"}); }, 30000);
 
-/* ---------------- conversation list ---------------- */
-function attachConversationList(){
-  if(waConvUnsub) waConvUnsub();
-  waConvUnsub = fbDb.collection("whatsapp_conversations").orderBy("lastMessageAt", "desc")
-    .onSnapshot(snap=>{
-      waConversations = [];
-      snap.forEach(doc=> waConversations.push({ id: doc.id, ...doc.data() }));
-      renderConvList();
-      checkForNewMessageNotifications();
-      refreshActiveCustomerPanel();
-    }, err=>{ console.error("conversation list listener error", err); toast("Couldn't load conversations"); });
-}
-function refreshActiveCustomerPanel(){
-  if(!waActivePhone) return;
-  const conv = waConversations.find(c=>c.id===waActivePhone);
-  if(!conv) return;
-  document.getElementById("waConvStatus").value = conv.status || "open";
-  document.getElementById("waConvAssignee").value = conv.assignedTo || "";
-  renderTagChips(conv.tags || []);
-  updateComposerState(conv);
-}
-function setWaFilter(f){
-  waFilter = f;
-  document.querySelectorAll(".wa-filter").forEach(el=>el.classList.toggle("active", el.dataset.filter===f));
-  renderConvList();
-}
-function renderConvList(){
-  const q = (document.getElementById("waSearch").value || "").toLowerCase().trim();
-  const statusF = document.getElementById("waStatusFilter").value;
-  const tagF = document.getElementById("waTagFilter").value;
-  const me = localStorage.getItem("pls_identity") || "";
-  let list = waConversations;
-  if(waFilter === "unread") list = list.filter(c => (c.unreadCount||0) > 0);
-  if(waFilter === "mine") list = list.filter(c => c.assignedTo === me);
-  if(statusF) list = list.filter(c => (c.status||"open") === statusF);
-  if(tagF) list = list.filter(c => (c.tags||[]).includes(tagF));
-  if(q) list = list.filter(c => (c.customerName||"").toLowerCase().includes(q) || (c.phone||"").includes(q));
+const TASK_COLS = [
+  {key:"backlog", label:"Backlog"},
+  {key:"today", label:"Doing Today"},
+  {key:"blocked", label:"Blocked"},
+  {key:"done", label:"Done"},
+];
+let dragTaskId = null;
 
-  refreshTagFilterOptions();
-
-  const el = document.getElementById("waConvList");
-  if(!list.length){
-    el.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><div class="ic">💬</div>${waFilter==="unread"?"No unread conversations":waFilter==="mine"?"Nothing assigned to you":"No conversations yet"}</div>`;
-    return;
-  }
-  el.innerHTML = list.map(c=>{
-    const unread = c.unreadCount || 0;
-    const status = c.status || "open";
-    const tags = c.tags || [];
-    return `<div class="wa-conv-item ${c.id===waActivePhone?'active':''}" onclick="openConversation('${c.id}')">
-      <div class="feed-avatar ${avatarClass(c.customerName||c.phone)}">${initials(c.customerName||c.phone)}</div>
-      <div class="wc-body">
-        <div class="wc-top"><span class="wc-name">${escapeHtml(c.customerName||c.phone)}</span><span class="wc-time">${fmtListTime(c.lastMessageAt)}</span></div>
-        <div class="wc-preview">${c.lastMessageDirection==='out'?'You: ':''}${escapeHtml(c.lastMessageText||'')}</div>
-        <div class="wc-meta-row">
-          <span class="wa-status-pill ${status}">${STATUS_LABEL[status]}</span>
-          ${tags.slice(0,2).map(t=>`<span class="wa-tag-pill-sm">${escapeHtml(t)}</span>`).join("")}
-          ${c.assignedTo?`<span class="wa-assignee-avatar ${avatarClass(c.assignedTo)}" title="${escapeHtml(c.assignedTo)}">${initials(c.assignedTo)}</span>`:""}
-        </div>
-      </div>
-      ${unread>0?`<span class="wc-unread">${unread>99?'99+':unread}</span>`:''}
+function renderBoard(){
+  const board = document.getElementById("board");
+  board.innerHTML = TASK_COLS.map(col=>{
+    const items = OPS.tasks.filter(t=>t.col===col.key);
+    return `<div class="board-col" data-col="${col.key}" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="onTaskDrop(event,'${col.key}')">
+      <div class="board-col-head"><span class="t">${col.label}</span><span class="n">${items.length}</span></div>
+      ${items.map(t=>`
+        <div class="board-card" draggable="true" ondragstart="dragTaskId='${t.id}';this.classList.add('dragging')" ondragend="this.classList.remove('dragging')">
+          <div class="bc-title">${escapeHtml(t.title)}</div>
+          <div class="bc-meta">
+            <span class="feed-avatar ${avatarClass(t.assignedTo||'?')}" style="width:20px;height:20px;flex:0 0 20px;font-size:9px;" title="${escapeHtml(t.assignedTo||'Unassigned')}">${initials(t.assignedTo||'?')}</span>
+            <button class="icon-btn" onclick="deleteTask('${t.id}')" title="Delete">✕</button>
+          </div>
+        </div>`).join("") || '<div style="font-size:11.5px;color:var(--text-tertiary);padding:8px 2px;">Empty</div>'}
     </div>`;
   }).join("");
 }
-function refreshTagFilterOptions(){
-  const sel = document.getElementById("waTagFilter");
-  const cur = sel.value;
-  const allTags = new Set();
-  waConversations.forEach(c=> (c.tags||[]).forEach(t=>allTags.add(t)));
-  sel.innerHTML = '<option value="">Any tag</option>' + [...allTags].sort().map(t=>`<option ${t===cur?'selected':''}>${escapeHtml(t)}</option>`).join("");
+function onTaskDrop(e, col){
+  e.preventDefault(); e.currentTarget.classList.remove('dragover');
+  const t = OPS.tasks.find(t=>t.id===dragTaskId);
+  if(t){ t.col = col; saveOps(false); renderBoard(); renderHubTags(); }
 }
-document.getElementById("waSearch").addEventListener("input", renderConvList);
-
-/* ---------------- top-level tabs ---------------- */
-function switchWaTopTab(tab){
-  document.querySelectorAll(".tabs2 .tab2").forEach(el=>el.classList.toggle("active", el.dataset.tab===tab));
-  ["inbox","customers","templates"].forEach(t=>document.getElementById("waTab-"+t).classList.toggle("hidden", t!==tab));
-  if(tab==="customers" && !waContactsLoaded) loadContacts();
-  if(tab==="templates" && !waTemplatesLoaded) loadTemplates();
+function addTask(){
+  const inp = document.getElementById("taskInput");
+  const val = inp.value.trim(); if(!val) return;
+  const assignee = document.getElementById("taskAssignee").value || null;
+  OPS.tasks.unshift({id:uid(), title:val, col:"backlog", assignedTo:assignee, createdAt:new Date().toISOString()});
+  inp.value=""; saveOps(true); renderBoard(); renderHubTags();
+}
+function deleteTask(id){
+  OPS.tasks = OPS.tasks.filter(t=>t.id!==id);
+  saveOps(true); renderBoard(); renderHubTags();
+}
+function fillTaskAssignee(){
+  document.getElementById("taskAssignee").innerHTML = '<option value="">Unassigned</option>' + TEAM_NAMES.map(n=>`<option value="${n}">${n}</option>`).join("");
 }
 
-/* ---------------- customers ---------------- */
-let waContacts = [];          // from Wix
-let waManualContacts = [];    // from OPS
-let waContactsLoaded = false;
-let waSelectedContacts = new Map(); // phone -> {phone, customerName}
-
-async function loadContacts(){
-  const el = document.getElementById("waContactsList");
-  el.innerHTML = '<div class="empty-state" style="padding:30px 0;"><div class="ic">⏳</div>Loading contacts…</div>';
-  try{
-    const search = document.getElementById("waContactsSearch").value.trim();
-    const res = await fbFunctions.httpsCallable("getContacts")({ search, limit: 300 });
-    waContacts = res.data.contacts || [];
-    waContactsLoaded = true;
-    renderContactsList();
-  }catch(e){
-    console.error(e);
-    el.innerHTML = `<div class="empty-state" style="padding:30px 0;"><div class="ic">⚠</div>Couldn't load contacts — ${escapeHtml(e.message||'')}</div>`;
-  }
-}
-document.getElementById("waContactsSearch").addEventListener("keydown", e=>{ if(e.key==="Enter") loadContacts(); });
-
-function renderContactsList(){
-  waManualContacts = OPS.waManualContacts || [];
-  const combined = [
-    ...waManualContacts.map(c=>({...c, _source:"manual"})),
-    ...waContacts.map(c=>({...c, _source:"wix"})),
-  ];
-  document.getElementById("waContactsCount").textContent = combined.length + " contact" + (combined.length===1?"":"s");
-  const el = document.getElementById("waContactsList");
-  if(!combined.length){
-    el.innerHTML = '<div class="empty-state" style="padding:30px 0;"><div class="ic">👥</div>No contacts found</div>';
-    return;
-  }
-  el.innerHTML = combined.map(c=>{
-    const phone = cleanPhoneJs(c.phone);
-    const checked = waSelectedContacts.has(phone) ? "checked" : "";
-    const lastSent = c.lastWhatsAppSent ? `Last WhatsApp: ${escapeHtml(c.lastWhatsAppTemplate||'')}` : (c._source==="manual" ? "Manually added" : "No automated messages yet");
-    return `<div class="wa-contact-card">
-      <input type="checkbox" ${checked} onchange="toggleContactSelect('${phone}', '${escapeHtml(c.customerName||phone).replace(/'/g,"\\'")}', this.checked)">
-      <div class="feed-avatar ${avatarClass(c.customerName||phone)}">${initials(c.customerName||phone)}</div>
-      <div class="cc-info">
-        <div class="cc-name">${escapeHtml(c.customerName||phone)} ${c.optedOut?'<span class="wa-tag-pill-sm" style="background:var(--red-soft);color:var(--red);">Opted out</span>':''}</div>
-        <div class="cc-meta">+${escapeHtml(phone||'')} · ${escapeHtml(lastSent)}${c.totalOrders?` · ${c.totalOrders} order${c.totalOrders===1?'':'s'}`:''}</div>
+function renderAnnouncements(){
+  const el = document.getElementById("announceFeed");
+  const list = [...OPS.announcements].sort((a,b)=> (b.pinned-a.pinned) || (new Date(b.createdAt)-new Date(a.createdAt)));
+  el.innerHTML = list.length ? list.map(a=>`
+    <div class="feed-item">
+      <div class="feed-avatar ${avatarClass(a.person||'?')}">${initials(a.person||'?')}</div>
+      <div class="feed-body">
+        <div class="feed-text">${escapeHtml(a.text)}</div>
+        <div class="feed-meta">${escapeHtml(a.person||'Someone')} · ${timeAgo(a.createdAt)}</div>
       </div>
-      <div class="cc-actions">
-        <button class="cvt-btn" style="width:auto;padding:6px 12px;font-size:12px;" onclick="openConversationFromContacts('${phone}','${escapeHtml(c.customerName||phone).replace(/'/g,"\\'")}')">Message</button>
-      </div>
-    </div>`;
-  }).join("");
-  updateSelectedBar();
+      <button class="feed-del" onclick="deleteAnnouncement('${a.id}')">✕</button>
+    </div>`).join("") : '<div class="empty-state" style="padding:20px 0;"><div class="ic">📣</div>Nothing posted yet</div>';
 }
-function cleanPhoneJs(p){
-  if(!p) return "";
-  let c = String(p).replace(/\D/g,"");
-  if(c.startsWith("0")) c = "27"+c.substring(1);
-  return c;
+function addAnnouncement(){
+  const inp = document.getElementById("announceInput");
+  const val = inp.value.trim(); if(!val) return;
+  OPS.announcements.unshift({id:uid(), text:val, person:currentIdentity(), createdAt:new Date().toISOString(), pinned:false});
+  inp.value=""; saveOps(true); renderAnnouncements();
 }
-function addManualContact(){
-  const name = document.getElementById("waNewContactName").value.trim();
-  const phone = cleanPhoneJs(document.getElementById("waNewContactPhone").value.trim());
-  const notes = document.getElementById("waNewContactNotes").value.trim();
-  if(!name || !phone || phone.length < 10){ toast("Enter a name and a valid phone number"); return; }
-  OPS.waManualContacts = OPS.waManualContacts || [];
-  OPS.waManualContacts.push({ id: uid(), customerName: name, phone, notes, addedBy: localStorage.getItem("pls_identity")||"Someone", createdAt: new Date().toISOString() });
-  saveOps(true);
-  document.getElementById("waNewContactName").value = "";
-  document.getElementById("waNewContactPhone").value = "";
-  document.getElementById("waNewContactNotes").value = "";
-  renderContactsList();
-}
-function toggleContactSelect(phone, name, checked){
-  if(checked) waSelectedContacts.set(phone, { phone, customerName: name });
-  else waSelectedContacts.delete(phone);
-  updateSelectedBar();
-}
-function clearContactSelection(){
-  waSelectedContacts.clear();
-  renderContactsList();
-}
-function updateSelectedBar(){
-  const bar = document.getElementById("waSelectedBar");
-  const n = waSelectedContacts.size;
-  bar.classList.toggle("hidden", n===0);
-  document.getElementById("waSelectedCount").textContent = n + " selected";
-}
-function openConversationFromContacts(phone, name){
-  switchWaTopTab("inbox");
-  if(!waConversations.find(c=>c.id===phone)){
-    fbDb.collection("whatsapp_conversations").doc(phone).set({
-      phone, customerName: name, lastMessageText: "", lastMessageAt: firebase.firestore.Timestamp.now(),
-      unreadCount: 0, status: "open", windowExpiresAt: firebase.firestore.Timestamp.fromMillis(0),
-    }, { merge: true }).then(()=> openConversation(phone));
-  } else {
-    openConversation(phone);
-  }
+function deleteAnnouncement(id){
+  OPS.announcements = OPS.announcements.filter(a=>a.id!==id);
+  saveOps(true); renderAnnouncements();
 }
 
-/* ---------------- templates ---------------- */
-let waTemplates = [];
-let waTemplatesLoaded = false;
-let waEditingTemplate = null;
-
-async function loadTemplates(){
-  const el = document.getElementById("waTemplatesList");
-  el.innerHTML = '<div class="empty-state" style="padding:30px 0;"><div class="ic">⏳</div>Loading templates from Meta…</div>';
-  try{
-    const res = await fbFunctions.httpsCallable("getTemplates")({});
-    waTemplates = res.data.templates || [];
-    waTemplatesLoaded = true;
-    renderTemplatesList();
-  }catch(e){
-    console.error(e);
-    el.innerHTML = `<div class="empty-state" style="padding:30px 0;"><div class="ic">⚠</div>Couldn't load templates — ${escapeHtml(e.message||'')}</div>`;
-  }
+function renderQuickLinks(){
+  const el = document.getElementById("quickLinksList");
+  const list = OPS.quickLinks;
+  el.innerHTML = list.length ? list.map(l=>`
+    <div class="link-row">
+      <a href="${escapeHtml(l.url)}" target="_blank">🔗 ${escapeHtml(l.label)}</a>
+      <button class="link-del" onclick="deleteQuickLink('${l.id}')">✕</button>
+    </div>`).join("") : '<div class="empty-state" style="padding:20px 0;"><div class="ic">🔗</div>No links yet</div>';
 }
-function templateBodyText(t){
-  const body = (t.components||[]).find(c=>c.type==="BODY");
-  return body ? body.text : "";
+function addQuickLink(){
+  const labelInp = document.getElementById("qlLabel"), urlInp = document.getElementById("qlUrl");
+  const label = labelInp.value.trim(); let url = urlInp.value.trim();
+  if(!label || !url) return;
+  if(!/^https?:\/\//i.test(url)) url = "https://" + url;
+  OPS.quickLinks.push({id:uid(), label, url});
+  labelInp.value=""; urlInp.value=""; saveOps(true); renderQuickLinks();
 }
-function renderTemplatesList(){
-  const el = document.getElementById("waTemplatesList");
-  if(!waTemplates.length){ el.innerHTML = '<div class="empty-state" style="padding:30px 0;"><div class="ic">📄</div>No templates found</div>'; return; }
-  el.innerHTML = waTemplates.map(t=>{
-    const status = (t.status||"").toLowerCase();
-    return `<div class="wa-template-card">
-      <div class="tc-top">
-        <div>
-          <div class="tc-name">${escapeHtml(t.name)}</div>
-          <div class="tc-meta">${escapeHtml(t.category||'')} · ${escapeHtml(t.language||'')}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="wa-status-badge ${status}">${escapeHtml(t.status||'Unknown')}</span>
-          <button class="cvt-btn" style="width:auto;padding:6px 12px;font-size:12px;" onclick='openTemplateEdit(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Edit</button>
-        </div>
-      </div>
-      <div class="tc-body">${escapeHtml(templateBodyText(t))}</div>
-      ${t.rejected_reason ? `<div style="color:var(--red);font-size:11.5px;margin-top:6px;">Rejected: ${escapeHtml(t.rejected_reason)}</div>` : ''}
-    </div>`;
-  }).join("");
-}
-function openTemplateEdit(t){
-  waEditingTemplate = t;
-  document.getElementById("waTemplateEditWarning").style.display = (t.status||"").toUpperCase()==="APPROVED" ? "block" : "none";
-  document.getElementById("waTemplateEditBody").value = templateBodyText(t);
-  document.getElementById("waTemplateEditResult").textContent = "";
-  document.getElementById("waTemplateEditModal").classList.remove("hidden");
-}
-function closeTemplateEdit(){ document.getElementById("waTemplateEditModal").classList.add("hidden"); }
-async function submitTemplateEdit(){
-  if(!waEditingTemplate) return;
-  const newBody = document.getElementById("waTemplateEditBody").value.trim();
-  if(!newBody){ toast("Body text can't be empty"); return; }
-  const resultEl = document.getElementById("waTemplateEditResult");
-  resultEl.textContent = "Submitting to Meta…";
-  try{
-    const components = (waEditingTemplate.components||[]).map(c=> c.type==="BODY" ? {...c, text:newBody} : c);
-    const res = await fbFunctions.httpsCallable("editTemplate")({ templateId: waEditingTemplate.id, components });
-    if(res.data.success){
-      resultEl.style.color = "var(--green)";
-      resultEl.textContent = "Submitted — Meta will re-review this template.";
-      loadTemplates();
-    } else {
-      resultEl.style.color = "var(--red)";
-      resultEl.textContent = "Meta rejected this edit: " + JSON.stringify(res.data.result?.error || res.data.result || "unknown error");
-    }
-  }catch(e){
-    resultEl.style.color = "var(--red)";
-    resultEl.textContent = "Failed: " + e.message;
-  }
+function deleteQuickLink(id){
+  OPS.quickLinks = OPS.quickLinks.filter(l=>l.id!==id);
+  saveOps(true); renderQuickLinks();
 }
 
-/* ---------------- batch send ---------------- */
-function templateIncompatibilityReason(t){
-  const comps = t.components || [];
-  const header = comps.find(c=>c.type==="HEADER");
-  if(header){
-    const fmt = (header.format||"TEXT").toUpperCase();
-    if(fmt !== "TEXT") return "This template has an image/video/document header that batch send can't fill in yet.";
-    if(header.text && /\{\{\s*\w+\s*\}\}/.test(header.text)) return "This template has a header with its own variable that batch send can't fill in yet.";
-    // static text header, no variable — Meta doesn't need it supplied at send time, safe to proceed
-  }
-  const buttonsComp = comps.find(c=>c.type==="BUTTONS");
-  if(buttonsComp){
-    const needsDynamicButton = (buttonsComp.buttons||[]).some(b=>{
-      const type = (b.type||"").toUpperCase();
-      if(type === "COPY_CODE") return true;
-      if(type === "URL" && b.url && /\{\{\s*\w+\s*\}\}/.test(b.url)) return true;
-      return false;
-    });
-    if(needsDynamicButton) return "This template has a coupon-code or dynamic-link button that batch send can't fill in yet.";
-    // static buttons (quick reply, fixed phone number, fixed URL) need no data at send time — safe to proceed
-  }
-  return null;
-}
-function openBatchSendModal(){
-  const sel = document.getElementById("waBatchTemplate");
-  const approved = waTemplates.filter(t=>(t.status||"").toUpperCase()==="APPROVED");
-  sel.innerHTML = approved.map(t=>{
-    const bad = templateIncompatibilityReason(t);
-    return `<option value="${escapeHtml(t.name)}" data-lang="${escapeHtml(t.language)}" ${bad?'data-incompatible="1"':''}>${escapeHtml(t.name)}${bad?' ⚠ needs header/button':''}</option>`;
-  }).join("") || '<option value="">No approved templates — check the Templates tab</option>';
-  document.getElementById("waBatchCount").textContent = waSelectedContacts.size;
-  document.getElementById("waBatchProgress").classList.add("hidden");
-  document.getElementById("waBatchResults").innerHTML = "";
-  renderBatchVarInputs();
-  sel.onchange = renderBatchVarInputs;
-  document.getElementById("waBatchSendModal").classList.remove("hidden");
-}
-function closeBatchSendModal(){ document.getElementById("waBatchSendModal").classList.add("hidden"); }
-function renderBatchVarInputs(){
-  const name = document.getElementById("waBatchTemplate").value;
-  const t = waTemplates.find(t=>t.name===name);
-  const box = document.getElementById("waBatchVarInputs");
-  const warnBox = document.getElementById("waBatchWarning");
-  const sendBtn = document.getElementById("waBatchSendBtn");
-  if(!t){ box.innerHTML=""; warnBox.style.display="none"; return; }
-
-  const incompatReason = templateIncompatibilityReason(t);
-  if(incompatReason){
-    warnBox.style.display = "block";
-    warnBox.textContent = "⚠ " + incompatReason + " Choose a body-only template, or ask to have header/button support added.";
-    sendBtn.disabled = true;
-    box.innerHTML = "";
-    return;
-  }
-  warnBox.style.display = "none";
-  sendBtn.disabled = false;
-
-  const body = templateBodyText(t);
-  const vars = [...new Set((body.match(/\{\{\s*\w+\s*\}\}/g)||[]).map(m=>m.replace(/[{}]/g,"").trim()))].filter(v=>v!=="customer_name");
-  box.innerHTML = vars.map(v=>`<input type="text" class="wa-batch-var-input" id="waBatchVar_${v}" placeholder="${v} (applies to everyone in this batch)">`).join("")
-    + (vars.length ? '' : '<p class="hint" style="margin:0;">This template only needs {{customer_name}}, which is personalized automatically per contact.</p>');
-}
-async function runBatchSend(){
-  const name = document.getElementById("waBatchTemplate").value;
-  const t = waTemplates.find(t=>t.name===name);
-  if(!t){ toast("Choose an approved template first"); return; }
-  if(templateIncompatibilityReason(t)){ toast("This template needs a header/button batch send can't fill in"); return; }
-  const contacts = [...waSelectedContacts.values()];
-  if(!contacts.length){ toast("No contacts selected"); return; }
-
-  const extraVars = {};
-  document.querySelectorAll("#waBatchVarInputs .wa-batch-var-input").forEach(inp=>{
-    const key = inp.id.replace("waBatchVar_","");
-    extraVars[key] = inp.value.trim();
-  });
-
-  const btn = document.getElementById("waBatchSendBtn");
-  btn.disabled = true;
-  const progress = document.getElementById("waBatchProgress");
-  const fill = document.getElementById("waBatchProgressFill");
-  const text = document.getElementById("waBatchProgressText");
-  const resultsEl = document.getElementById("waBatchResults");
-  progress.classList.remove("hidden");
-  resultsEl.innerHTML = "";
-
-  const chunkSize = 25;
-  let sentTotal = 0, failedTotal = 0;
-  const allFailures = [];
-  for(let i=0; i<contacts.length; i+=chunkSize){
-    const chunk = contacts.slice(i, i+chunkSize);
-    text.textContent = `Sending ${i+1}–${Math.min(i+chunkSize, contacts.length)} of ${contacts.length}…`;
-    try{
-      const res = await fbFunctions.httpsCallable("sendBatchTemplate")({
-        contacts: chunk, templateName: name, language: t.language || "en", extraVars
-      });
-      sentTotal += res.data.sent; failedTotal += res.data.failed;
-      (res.data.results||[]).filter(r=>!r.success).forEach(r=>{
-        const c = chunk.find(c=>cleanPhoneJs(c.phone)===r.phone);
-        allFailures.push({ phone: r.phone, name: c?c.customerName:r.phone, error: r.error });
-      });
-    }catch(e){
-      console.error(e);
-      failedTotal += chunk.length;
-      chunk.forEach(c=> allFailures.push({ phone: c.phone, name: c.customerName, error: e.message }));
-    }
-    fill.style.width = Math.round(((i+chunk.length)/contacts.length)*100) + "%";
-  }
-
-  text.textContent = `Done — ${sentTotal} sent, ${failedTotal} failed.`;
-  if(allFailures.length){
-    resultsEl.innerHTML = '<div class="wa-cust-label" style="margin-top:12px;">Failures</div>' + allFailures.map(f=>
-      `<div style="font-size:11.5px;color:var(--red);padding:4px 0;border-bottom:1px solid var(--border-soft);">
-        <b>${escapeHtml(f.name||f.phone)}</b> — ${escapeHtml(typeof f.error==='string'?f.error:JSON.stringify(f.error))}
-      </div>`).join("");
-  }
-  btn.disabled = false;
-  toast(`Batch complete: ${sentTotal} sent, ${failedTotal} failed`);
-  clearContactSelection();
+function renderHubTags(){
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById("tagUpdatesCount").textContent = OPS.dailyUpdates.filter(u=>u.date===today).length;
+  document.getElementById("tagPostsCount").textContent = OPS.socialPosts.filter(p=>p.status==="scheduled").length;
+  document.getElementById("tagContactsCount").textContent = OPS.suppliers.length + OPS.team.length;
+  const open = OPS.tasks.filter(t=>t.col!=="done").length;
+  document.getElementById("tasksSummaryDesc").textContent = open ? `${open} task${open===1?'':'s'} in play across the team` : "All clear — nothing in play";
 }
 
-/* ---------------- opening a conversation ---------------- */
-function openConversation(phone){
-  waActivePhone = phone;
-  renderConvList();
-  document.getElementById("waThreadEmpty").classList.add("hidden");
-  document.getElementById("waThreadActive").classList.remove("hidden");
-  document.getElementById("waCustomerEmpty").classList.add("hidden");
-  document.getElementById("waCustomerPanel").classList.remove("hidden");
-
-  const conv = waConversations.find(c=>c.id===phone) || { phone, customerName: phone };
-  document.getElementById("waThreadAvatar").className = "feed-avatar " + avatarClass(conv.customerName||phone);
-  document.getElementById("waThreadAvatar").textContent = initials(conv.customerName||phone);
-  document.getElementById("waThreadName").textContent = conv.customerName || phone;
-  document.getElementById("waThreadPhone").textContent = "+" + phone;
-  document.getElementById("waCustAvatar").textContent = initials(conv.customerName||phone);
-  document.getElementById("waCustName").textContent = conv.customerName || phone;
-  document.getElementById("waCustPhone").textContent = "+" + phone;
-  document.getElementById("waConvStatus").value = conv.status || "open";
-  fillAssigneeDropdown();
-  document.getElementById("waConvAssignee").value = conv.assignedTo || "";
-  renderTagChips(conv.tags || []);
-
-  updateComposerState(conv);
-
-  // mark read
-  fbDb.collection("whatsapp_conversations").doc(phone).update({ unreadCount: 0 }).catch(e=>console.warn("mark read failed", e));
-
-  if(waNotesUnsub) waNotesUnsub();
-  waNotesUnsub = fbDb.collection("whatsapp_conversations").doc(phone).collection("notes").orderBy("createdAt", "desc")
-    .onSnapshot(snap=>{
-      const notes = [];
-      snap.forEach(doc=> notes.push({ id: doc.id, ...doc.data() }));
-      renderNotes(notes);
-    }, err=>console.error("notes listener error", err));
-
-  if(waMsgUnsub) waMsgUnsub();
-  waMsgUnsub = fbDb.collection("whatsapp_conversations").doc(phone).collection("messages").orderBy("createdAt", "asc")
-    .onSnapshot(snap=>{
-      const msgs = [];
-      snap.forEach(doc=> msgs.push({ id: doc.id, ...doc.data() }));
-      renderMessages(msgs);
-      // conversation doc may have updated (e.g. windowExpiresAt) — refresh composer state
-      const updated = waConversations.find(c=>c.id===phone);
-      if(updated) updateComposerState(updated);
-    }, err=>{ console.error("messages listener error", err); });
-}
-
-function renderMessages(msgs){
-  const el = document.getElementById("waMessages");
-  let html = "";
-  let lastDateStr = null;
-  for(const m of msgs){
-    const d = m.createdAt ? (m.createdAt.toDate ? m.createdAt.toDate() : new Date(m.createdAt)) : new Date();
-    const dateStr = d.toDateString();
-    if(dateStr !== lastDateStr){ html += `<div class="wa-date-sep">${fmtDateSep(d)}</div>`; lastDateStr = dateStr; }
-
-    const isTemplate = m.type === "template";
-    const isAutomation = m.source === "automation";
-    const tick = m.direction==="out" ? statusTick(m.status) : "";
-    let labelLine = "";
-    if(isAutomation) labelLine = `<div style="font-size:10.5px;opacity:.75;margin-bottom:3px;">🤖 Automated · ${escapeHtml(m.templateName||'')}</div>`;
-    else if(isTemplate) labelLine = `<div style="font-size:10.5px;opacity:.75;margin-bottom:3px;">📄 Template: ${escapeHtml(m.templateName||'')}</div>`;
-
-    let mediaHtml = "";
-    if(m.mediaUrl && m.mediaType === "image"){
-      mediaHtml = `<img src="${escapeHtml(m.mediaUrl)}" alt="Photo" style="max-width:240px;max-height:320px;border-radius:10px;display:block;margin-bottom:6px;cursor:zoom-in;object-fit:cover;" onclick="window.open('${escapeHtml(m.mediaUrl)}','_blank')" onerror="this.outerHTML='<div style=&quot;font-size:12px;opacity:.7;margin-bottom:4px;&quot;>📷 Photo (couldn\\'t load — open WhatsApp to view)</div>';">`;
-    } else if(m.mediaUrl && m.mediaType === "video"){
-      mediaHtml = `<video controls style="max-width:260px;max-height:320px;border-radius:10px;display:block;margin-bottom:6px;" src="${escapeHtml(m.mediaUrl)}"></video>`;
-    } else if(m.mediaFileRef && (m.mediaType === "audio" || m.mediaType === "document")){
-      const safeRef = escapeHtml(m.mediaFileRef).replace(/'/g,"\\'");
-      const icon = m.mediaType === "audio" ? "🎤" : "📄";
-      const label = m.mediaType === "audio" ? "Play voice note" : "Open document";
-      mediaHtml = `<button class="wa-media-open-btn" onclick="openMediaAttachment('${safeRef}','${m.mediaType}', this)">${icon} ${label} →</button>`;
-    }
-
-    html += `<div class="wa-bubble-row ${m.direction}">
-      <div class="wa-bubble ${isTemplate||isAutomation?'template':''} ${isAutomation?'automation':''}">
-        ${labelLine}
-        ${mediaHtml}
-        ${escapeHtml(m.text||'')}
-        <div class="wb-meta">${fmtTime(m.createdAt)} ${tick}</div>
-      </div>
-    </div>`;
-  }
-  el.innerHTML = html;
-  el.scrollTop = el.scrollHeight;
-}
-async function openMediaAttachment(fileUrl, mediaType, btnEl){
-  const original = btnEl.textContent;
-  btnEl.textContent = "Loading…";
-  btnEl.disabled = true;
-  try{
-    const res = await fbFunctions.httpsCallable("getMediaLink")({ fileUrl });
-    if(mediaType === "audio"){
-      const audio = document.createElement("audio");
-      audio.controls = true;
-      audio.src = res.data.url;
-      audio.style.display = "block";
-      audio.style.marginTop = "6px";
-      btnEl.replaceWith(audio);
-    } else {
-      window.open(res.data.url, "_blank");
-      btnEl.textContent = original;
-      btnEl.disabled = false;
-    }
-  }catch(e){
-    console.error(e);
-    toast("Couldn't load attachment — it may no longer be available");
-    btnEl.textContent = original;
-    btnEl.disabled = false;
-  }
-}
-function statusTick(status){
-  if(status==="read") return `<span class="wa-tick" style="color:#53bdeb;">✓✓</span>`;
-  if(status==="delivered") return `<span class="wa-tick">✓✓</span>`;
-  if(status==="sent") return `<span class="wa-tick">✓</span>`;
-  if(status==="failed") return `<span class="wa-tick" title="Failed to send">⚠</span>`;
-  return `<span class="wa-tick">…</span>`;
-}
-
-/* ---------------- composer / 24h window ---------------- */
-function updateComposerState(conv){
-  const expiresAt = conv.windowExpiresAt ? (conv.windowExpiresAt.toMillis ? conv.windowExpiresAt.toMillis() : new Date(conv.windowExpiresAt).getTime()) : 0;
-  const expired = Date.now() > expiresAt;
-  document.getElementById("waWindowExpired").classList.toggle("hidden", !expired);
-  document.getElementById("waTextComposer").classList.toggle("hidden", expired);
-  if(expired) fillTemplatePicker();
-}
-function fillTemplatePicker(){
-  const sel = document.getElementById("waTemplatePicker");
-  const usable = (waTemplates||[]).filter(t=>(t.status||"").toUpperCase()==="APPROVED" && !templateIncompatibilityReason(t));
-  sel.innerHTML = '<option value="">Choose a template…</option>' + usable.map(t=>`<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)}</option>`).join("")
-    || '<option value="">Choose a template…</option>';
-  if(!waTemplatesLoaded){
-    loadTemplates().then(()=>fillTemplatePicker());
-  }
-  sel.onchange = renderTemplateVarInputs;
-  document.getElementById("waTemplateVars").innerHTML = "";
-}
-function renderTemplateVarInputs(){
-  const name = document.getElementById("waTemplatePicker").value;
-  const box = document.getElementById("waTemplateVars");
-  const t = (waTemplates||[]).find(t=>t.name===name);
-  if(!t){ box.innerHTML = ""; return; }
-  const body = templateBodyText(t);
-  const vars = [...new Set((body.match(/\{\{\s*\w+\s*\}\}/g)||[]).map(m=>m.replace(/[{}]/g,"").trim()))].filter(v=>v!=="customer_name");
-  box.innerHTML = vars.map(v=>
-    LONG_TEXT_VARS.includes(v)
-      ? `<textarea id="waVar_${v}" placeholder="${VAR_LABELS[v]||v}" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:8px;"></textarea>`
-      : `<input type="text" id="waVar_${v}" placeholder="${VAR_LABELS[v]||v}">`
-  ).join("")
-    + (vars.length ? '' : '<p class="hint" style="margin:0;">This template only needs {{customer_name}}, which is filled in automatically.</p>');
-}
-
-async function sendWaText(){
-  if(!waActivePhone) return;
-  const box = document.getElementById("waReplyText");
-  const text = box.value.trim();
-  if(!text) return;
-  const btn = document.getElementById("waSendBtn");
-  btn.disabled = true;
-  try{
-    const conv = waConversations.find(c=>c.id===waActivePhone);
-    await fbFunctions.httpsCallable("sendWhatsAppReply")({ phone: waActivePhone, mode: "text", text, customerName: conv?.customerName });
-    box.value = "";
-  }catch(e){
-    console.error(e);
-    toast(e.message || "Message failed to send");
-  }
-  btn.disabled = false;
-  box.focus();
-}
-document.getElementById("waReplyText").addEventListener("keydown", e=>{
-  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendWaText(); }
-});
-
-async function sendWaTemplate(){
-  const name = document.getElementById("waTemplatePicker").value;
-  if(!name){ toast("Choose a template first"); return; }
-  const t = (waTemplates||[]).find(t=>t.name===name);
-  if(!t){ toast("Couldn't find that template — try refreshing"); return; }
-  const body = templateBodyText(t);
-  const vars = [...new Set((body.match(/\{\{\s*\w+\s*\}\}/g)||[]).map(m=>m.replace(/[{}]/g,"").trim()))].filter(v=>v!=="customer_name");
-  const variables = {};
-  for(const v of vars){
-    const val = document.getElementById("waVar_"+v).value.trim();
-    if(!val){ toast("Fill in " + (VAR_LABELS[v]||v)); return; }
-    variables[v] = val;
-  }
-  const conv = waConversations.find(c=>c.id===waActivePhone);
-  const firstName = ((conv?.customerName || "there").split(" ")[0]) || "there";
-  let renderedText = body.replace(/\{\{\s*customer_name\s*\}\}/gi, firstName);
-  Object.entries(variables).forEach(([k,v])=>{
-    renderedText = renderedText.replace(new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`, "gi"), v);
-  });
-  try{
-    await fbFunctions.httpsCallable("sendWhatsAppReply")({
-      phone: waActivePhone, mode: "template", templateName: name, language: t.language || "en",
-      variables, customerName: conv?.customerName, renderedText
-    });
-    toast("Template sent ✓");
-  }catch(e){
-    console.error(e);
-    toast(e.message || "Template failed to send");
-  }
-}
-
-function setConvStatus(status){
-  if(!waActivePhone) return;
-  fbDb.collection("whatsapp_conversations").doc(waActivePhone).update({ status }).catch(e=>{
-    console.error(e); toast("Couldn't update status");
-  });
-}
-
-async function deleteConversation(){
-  if(!waActivePhone) return;
-  const conv = waConversations.find(c=>c.id===waActivePhone);
-  const name = conv?.customerName || waActivePhone;
-  const ok = confirm(`Delete the entire conversation with ${name}?\n\nThis removes it from PLS HQ permanently and can't be undone. Your original records in Wix (IncomingMessages, WhatsAppLogs) are not affected — this only clears the PLS HQ view.`);
-  if(!ok) return;
-  const phoneToDelete = waActivePhone;
-  try{
-    await fbFunctions.httpsCallable("deleteConversation")({ phone: phoneToDelete });
-    toast("Conversation deleted");
-    if(waMsgUnsub) waMsgUnsub();
-    if(waNotesUnsub) waNotesUnsub();
-    waActivePhone = null;
-    document.getElementById("waThreadActive").classList.add("hidden");
-    document.getElementById("waThreadEmpty").classList.remove("hidden");
-    document.getElementById("waCustomerPanel").classList.add("hidden");
-    document.getElementById("waCustomerEmpty").classList.remove("hidden");
-  }catch(e){
-    console.error(e);
-    toast("Couldn't delete conversation: " + (e.message||""));
-  }
-}
-
-/* ---------------- assignment ---------------- */
-function fillAssigneeDropdown(){
-  const sel = document.getElementById("waConvAssignee");
-  sel.innerHTML = '<option value="">Unassigned</option>' + TEAM_NAMES.map(n=>`<option>${n}</option>`).join("");
-}
-function setConvAssignee(name){
-  if(!waActivePhone) return;
-  fbDb.collection("whatsapp_conversations").doc(waActivePhone).update({ assignedTo: name || null }).catch(e=>{
-    console.error(e); toast("Couldn't update assignment");
-  });
-}
-
-/* ---------------- tags ---------------- */
-function renderTagChips(tags){
-  const el = document.getElementById("waTagChips");
-  if(!tags.length){ el.innerHTML = '<span style="font-size:11.5px;color:var(--text-tertiary);">No tags yet</span>'; return; }
-  el.innerHTML = tags.map(t=>`<span class="wa-tag-chip">${escapeHtml(t)}<button onclick="removeTag('${escapeHtml(t).replace(/'/g,"\\'")}')">✕</button></span>`).join("");
-}
-function addTagFromPicker(){
-  const sel = document.getElementById("waTagPicker");
-  const tag = sel.value;
-  if(!tag || !waActivePhone) return;
-  const conv = waConversations.find(c=>c.id===waActivePhone);
-  const tags = new Set(conv?.tags || []);
-  tags.add(tag);
-  fbDb.collection("whatsapp_conversations").doc(waActivePhone).update({ tags: [...tags] }).catch(e=>{
-    console.error(e); toast("Couldn't add tag");
-  });
-  sel.value = "";
-}
-function removeTag(tag){
-  if(!waActivePhone) return;
-  const conv = waConversations.find(c=>c.id===waActivePhone);
-  const tags = (conv?.tags || []).filter(t=>t!==tag);
-  fbDb.collection("whatsapp_conversations").doc(waActivePhone).update({ tags }).catch(e=>{
-    console.error(e); toast("Couldn't remove tag");
-  });
-}
-
-/* ---------------- internal notes ---------------- */
-function renderNotes(notes){
-  const el = document.getElementById("waNotesList");
-  if(!notes.length){ el.innerHTML = ""; return; }
-  el.innerHTML = notes.map(n=>`
-    <div class="wa-note-item">
-      <div class="wn-text">${escapeHtml(n.text)}</div>
-      <div class="wn-meta">
-        <span>${escapeHtml(n.addedBy||'Someone')} · ${timeAgo(n.createdAt && n.createdAt.toDate ? n.createdAt.toDate().toISOString() : null)}</span>
-        <button onclick="deleteNote('${n.id}')">Delete</button>
-      </div>
-    </div>`).join("");
-}
-function addNote(){
-  const box = document.getElementById("waNoteInput");
-  const text = box.value.trim();
-  if(!text || !waActivePhone) return;
-  fbDb.collection("whatsapp_conversations").doc(waActivePhone).collection("notes").add({
-    text, addedBy: localStorage.getItem("pls_identity")||"Someone", createdAt: firebase.firestore.Timestamp.now()
-  }).then(()=>{ box.value=""; }).catch(e=>{ console.error(e); toast("Couldn't add note"); });
-}
-function deleteNote(noteId){
-  if(!waActivePhone) return;
-  fbDb.collection("whatsapp_conversations").doc(waActivePhone).collection("notes").doc(noteId).delete()
-    .catch(e=>{ console.error(e); toast("Couldn't delete note"); });
-}
-
-/* ---------------- quick replies ---------------- */
-function toggleQuickReplies(){
-  const menu = document.getElementById("waQuickRepliesMenu");
-  const willShow = menu.classList.contains("hidden");
-  menu.classList.toggle("hidden");
-  if(willShow) renderQuickRepliesMenu();
-}
-function renderQuickRepliesMenu(){
-  const menu = document.getElementById("waQuickRepliesMenu");
-  const list = OPS.waQuickReplies || [];
-  const items = list.map(q=>`
-    <div class="wa-quick-item" onclick="insertQuickReply('${q.id}')">
-      <div class="qi-title">${escapeHtml(q.title)}</div>
-      <div class="qi-body">${escapeHtml(q.body)}</div>
-    </div>`).join("");
-  menu.innerHTML = (items || '<div style="padding:10px;font-size:12px;color:var(--text-tertiary);">No quick replies yet</div>')
-    + `<div class="wa-quick-manage-link" onclick="openQuickManage()">Manage quick replies…</div>`;
-}
-function substituteVars(body, conv){
-  const firstName = ((conv && conv.customerName) || "").split(" ")[0] || "there";
-  return body.replace(/\{\{\s*first_name\s*\}\}/gi, firstName);
-}
-function insertQuickReply(id){
-  const q = (OPS.waQuickReplies||[]).find(q=>q.id===id);
-  if(!q) return;
-  const conv = waConversations.find(c=>c.id===waActivePhone);
-  const box = document.getElementById("waReplyText");
-  box.value = substituteVars(q.body, conv);
-  box.focus();
-  document.getElementById("waQuickRepliesMenu").classList.add("hidden");
-}
-function openQuickManage(){
-  document.getElementById("waQuickRepliesMenu").classList.add("hidden");
-  document.getElementById("waQuickManageModal").classList.remove("hidden");
-  renderQuickManageList();
-}
-function closeQuickManage(){ document.getElementById("waQuickManageModal").classList.add("hidden"); }
-function renderQuickManageList(){
-  const el = document.getElementById("waQuickManageList");
-  const list = OPS.waQuickReplies || [];
-  if(!list.length){ el.innerHTML = '<div class="empty-state" style="padding:16px 0;"><div class="ic">⚡</div>No quick replies yet</div>'; return; }
-  el.innerHTML = list.map(q=>`
-    <div class="wa-quick-manage-row">
-      <div style="flex:1;min-width:0;">
-        <div class="qm-title">${escapeHtml(q.title)}</div>
-        <div class="qm-body">${escapeHtml(q.body)}</div>
-      </div>
-      <button class="icon-btn" onclick="deleteQuickReply('${q.id}')">✕</button>
-    </div>`).join("");
-}
-function saveQuickReply(){
-  const title = document.getElementById("waQuickTitle").value.trim();
-  const body = document.getElementById("waQuickBody").value.trim();
-  if(!title || !body){ toast("Fill in both a label and the reply text"); return; }
-  OPS.waQuickReplies = OPS.waQuickReplies || [];
-  OPS.waQuickReplies.push({ id: uid(), title, body, createdBy: localStorage.getItem("pls_identity")||"Someone", createdAt: new Date().toISOString() });
-  saveOps(true);
-  document.getElementById("waQuickTitle").value = "";
-  document.getElementById("waQuickBody").value = "";
-  renderQuickManageList();
-}
-function deleteQuickReply(id){
-  OPS.waQuickReplies = (OPS.waQuickReplies||[]).filter(q=>q.id!==id);
-  saveOps(true);
-  renderQuickManageList();
-}
-document.addEventListener("click", e=>{
-  const menu = document.getElementById("waQuickRepliesMenu");
-  const wrap = document.querySelector(".wa-quick-wrap");
-  if(menu && !menu.classList.contains("hidden") && wrap && !wrap.contains(e.target)) menu.classList.add("hidden");
-});
-
-/* ---------------- notifications ---------------- */
-if(typeof Notification !== "undefined" && Notification.permission === "default"){
-  document.addEventListener("click", function requestOnce(){
-    Notification.requestPermission();
-    document.removeEventListener("click", requestOnce);
-  }, { once: true });
-}
-function checkForNewMessageNotifications(){
-  let total = 0;
-  const newlyUnread = [];
-  waConversations.forEach(c=>{
-    total += (c.unreadCount||0);
-    if((c.unreadCount||0) > 0 && c.lastMessageDirection === "in") newlyUnread.push(c);
-  });
-  if(total > lastKnownTotalUnread){
-    const growers = newlyUnread.filter(c=>!notifiedMessageIds.has(c.id+"_"+c.lastMessageText));
-    growers.forEach(c=>{
-      notifiedMessageIds.add(c.id+"_"+c.lastMessageText);
-      if(c.id !== waActivePhone){
-        toast(`New message from ${c.customerName||c.phone}`);
-        if(typeof Notification !== "undefined" && Notification.permission === "granted"){
-          try{ new Notification(`${c.customerName||c.phone}`, { body: c.lastMessageText||"New WhatsApp message" }); }catch(e){}
-        }
-      }
-    });
-  }
-  lastKnownTotalUnread = total;
-}
-
-/* ---------------- boot ---------------- */
-let waConvListStarted = false;
 function renderAll(){
-  fbFunctions = fbApp ? fbApp.functions("us-central1") : null;
-  if(!waConvListStarted){ attachConversationList(); waConvListStarted = true; }
-  else { renderConvList(); if(!document.getElementById("waQuickRepliesMenu").classList.contains("hidden")) renderQuickRepliesMenu(); }
-  if(waContactsLoaded) renderContactsList();
+  renderGreeting();
+  renderBoard();
+  renderAnnouncements();
+  renderQuickLinks();
+  renderHubTags();
   document.getElementById("setupBanner").style.display = firebaseConfigured() ? "none" : "block";
 }
+
+fillTaskAssignee();
 loadOps();
+document.getElementById("announceInput").addEventListener("keydown", e=>{ if(e.key==="Enter") addAnnouncement(); });
+document.getElementById("taskInput").addEventListener("keydown", e=>{ if(e.key==="Enter") addTask(); });
 
 </script>
 </body>
