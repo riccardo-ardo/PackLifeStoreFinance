@@ -629,6 +629,7 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-status-badge.paused, .wa-status-badge.disabled{background:var(--border-soft);color:var(--text-secondary);}
 
 .wa-batch-var-input{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;margin-bottom:8px;}
+.wa-batch-coupon-input{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;margin-bottom:8px;}
 
 .nav-item{text-decoration:none;}
 /* This page only. Scoped to this file — these selectors are shared
@@ -1375,6 +1376,12 @@ function templateBodyText(t){
   const body = (t.components||[]).find(c=>c.type==="BODY");
   return body ? body.text : "";
 }
+function getCouponButtonIndex(t){
+  const buttonsComp = (t.components||[]).find(c=>c.type==="BUTTONS");
+  if(!buttonsComp) return null;
+  const idx = (buttonsComp.buttons||[]).findIndex(b=>(b.type||"").toUpperCase()==="COPY_CODE");
+  return idx >= 0 ? idx : null;
+}
 function renderTemplatesList(){
   const el = document.getElementById("waTemplatesList");
   if(!waTemplates.length){ el.innerHTML = '<div class="empty-state" style="padding:30px 0;"><div class="ic">📄</div>No templates found</div>'; return; }
@@ -1441,11 +1448,10 @@ function templateIncompatibilityReason(t){
   if(buttonsComp){
     const needsDynamicButton = (buttonsComp.buttons||[]).some(b=>{
       const type = (b.type||"").toUpperCase();
-      if(type === "COPY_CODE") return true;
       if(type === "URL" && b.url && /\{\{\s*\w+\s*\}\}/.test(b.url)) return true;
       return false;
     });
-    if(needsDynamicButton) return "This template has a coupon-code or dynamic-link button that batch send can't fill in yet.";
+    if(needsDynamicButton) return "This template has a dynamic link button that batch send can't fill in yet.";
     // static buttons (quick reply, fixed phone number, fixed URL) need no data at send time — safe to proceed
   }
   return null;
@@ -1486,8 +1492,10 @@ function renderBatchVarInputs(){
 
   const body = templateBodyText(t);
   const vars = [...new Set((body.match(/\{\{\s*\w+\s*\}\}/g)||[]).map(m=>m.replace(/[{}]/g,"").trim()))].filter(v=>v!=="customer_name");
+  const couponIdx = getCouponButtonIndex(t);
   box.innerHTML = vars.map(v=>`<input type="text" class="wa-batch-var-input" id="waBatchVar_${v}" placeholder="${v} (applies to everyone in this batch)">`).join("")
-    + (vars.length ? '' : '<p class="hint" style="margin:0;">This template only needs {{customer_name}}, which is personalized automatically per contact.</p>');
+    + (couponIdx !== null ? `<input type="text" class="wa-batch-coupon-input" id="waBatchCouponCode" placeholder="Coupon code — same code for everyone in this batch (e.g. PACKFIRST)">` : "")
+    + (vars.length || couponIdx !== null ? '' : '<p class="hint" style="margin:0;">This template only needs {{customer_name}}, which is personalized automatically per contact.</p>');
 }
 async function runBatchSend(){
   const name = document.getElementById("waBatchTemplate").value;
@@ -1502,6 +1510,12 @@ async function runBatchSend(){
     const key = inp.id.replace("waBatchVar_","");
     extraVars[key] = inp.value.trim();
   });
+  const couponIdx = getCouponButtonIndex(t);
+  let couponCode = "";
+  if(couponIdx !== null){
+    couponCode = (document.getElementById("waBatchCouponCode").value||"").trim();
+    if(!couponCode){ toast("Enter the coupon code to send"); return; }
+  }
 
   const btn = document.getElementById("waBatchSendBtn");
   btn.disabled = true;
@@ -1520,7 +1534,8 @@ async function runBatchSend(){
     text.textContent = `Sending ${i+1}–${Math.min(i+chunkSize, contacts.length)} of ${contacts.length}…`;
     try{
       const res = await fbFunctions.httpsCallable("sendBatchTemplate")({
-        contacts: chunk, templateName: name, language: t.language || "en", extraVars
+        contacts: chunk, templateName: name, language: t.language || "en", extraVars,
+        ...(couponCode ? { couponCode, couponButtonIndex: couponIdx } : {})
       });
       sentTotal += res.data.sent; failedTotal += res.data.failed;
       (res.data.results||[]).filter(r=>!r.success).forEach(r=>{
@@ -1693,12 +1708,14 @@ function renderTemplateVarInputs(){
   if(!t){ box.innerHTML = ""; return; }
   const body = templateBodyText(t);
   const vars = [...new Set((body.match(/\{\{\s*\w+\s*\}\}/g)||[]).map(m=>m.replace(/[{}]/g,"").trim()))].filter(v=>v!=="customer_name");
+  const couponIdx = getCouponButtonIndex(t);
   box.innerHTML = vars.map(v=>
     LONG_TEXT_VARS.includes(v)
       ? `<textarea id="waVar_${v}" placeholder="${VAR_LABELS[v]||v}" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:8px;"></textarea>`
       : `<input type="text" id="waVar_${v}" placeholder="${VAR_LABELS[v]||v}">`
   ).join("")
-    + (vars.length ? '' : '<p class="hint" style="margin:0;">This template only needs {{customer_name}}, which is filled in automatically.</p>');
+    + (couponIdx !== null ? `<input type="text" id="waCouponCode" placeholder="Coupon code (e.g. PACKFIRST)">` : "")
+    + (vars.length || couponIdx !== null ? '' : '<p class="hint" style="margin:0;">This template only needs {{customer_name}}, which is filled in automatically.</p>');
 }
 
 async function sendWaText(){
@@ -1736,16 +1753,24 @@ async function sendWaTemplate(){
     if(!val){ toast("Fill in " + (VAR_LABELS[v]||v)); return; }
     variables[v] = val;
   }
+  const couponIdx = getCouponButtonIndex(t);
+  let couponCode = "";
+  if(couponIdx !== null){
+    couponCode = document.getElementById("waCouponCode").value.trim();
+    if(!couponCode){ toast("Enter the coupon code to send"); return; }
+  }
   const conv = waConversations.find(c=>c.id===waActivePhone);
   const firstName = ((conv?.customerName || "there").split(" ")[0]) || "there";
   let renderedText = body.replace(/\{\{\s*customer_name\s*\}\}/gi, firstName);
   Object.entries(variables).forEach(([k,v])=>{
     renderedText = renderedText.replace(new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`, "gi"), v);
   });
+  if(couponCode) renderedText += ` [Coupon: ${couponCode}]`;
   try{
     await fbFunctions.httpsCallable("sendWhatsAppReply")({
       phone: waActivePhone, mode: "template", templateName: name, language: t.language || "en",
-      variables, customerName: conv?.customerName, renderedText
+      variables, customerName: conv?.customerName, renderedText,
+      ...(couponCode ? { couponCode, couponButtonIndex: couponIdx } : {})
     });
     toast("Template sent ✓");
   }catch(e){
