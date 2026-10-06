@@ -389,7 +389,8 @@ let syncState = "connecting"; // connecting | ok | offline | unconfigured
 
 const emptyDB = () => ({
   meta:{ categories:[...DEFAULT_CATEGORIES], adReservePct:0.20, partners:[...PARTNERS], splitPercents:{Riccardo:0.40, Anna:0.40}, updatedAt:null,
-         centralCollector:"Riccardo", chrisFrontsSuppliers:true, docFolders:["General"] },
+         centralCollector:"Riccardo", chrisFrontsSuppliers:true, docFolders:["General"],
+         vatEnabled:true, vatRate:0.15, vatSupplierDefaults:{PUMA:"excl"} },
   orders:[], transactions:[], documents:[], ticketSales:[], reviewQueue:[], skuMap:[], payouts:[]
 });
 
@@ -544,6 +545,37 @@ function supplierGroup(order){
   return /puma/i.test(order.product||"") ? "PUMA" : "Other";
 }
 
+/* ---------------- VAT on supplier costs ----------------
+   order.costSupplierVat: "excl" (cost excludes VAT) | "incl" (cost already includes VAT) | unset (legacy — no VAT added).
+   Only "excl" orders contribute VAT; the defaults map only pre-fills entry forms and is never applied retroactively. */
+const VAT_LABELS = {excl:"Excludes VAT", incl:"Includes VAT", "":"Not set"};
+const round2 = n => Math.round(((Number(n)||0)+Number.EPSILON)*100)/100;
+function vatOn(){ return !DB.meta || DB.meta.vatEnabled!==false; }
+function vatRate(){ const r = DB.meta && DB.meta.vatRate; return (r==null || isNaN(Number(r)))? 0.15 : Number(r); }
+function vatDefaults(){ return (DB.meta && DB.meta.vatSupplierDefaults && typeof DB.meta.vatSupplierDefaults==="object")? DB.meta.vatSupplierDefaults : {}; }
+function vatDefaultFor(supplier){
+  const key = (supplier||"").trim().toLowerCase();
+  if(!key) return "";
+  const hit = Object.keys(vatDefaults()).find(k=>k.trim().toLowerCase()===key);
+  const v = hit? vatDefaults()[hit] : "";
+  return (v==="excl"||v==="incl")? v : "";
+}
+function setVatDefault(supplier, choice){
+  const name = (supplier||"").trim();
+  if(!name || (choice!=="excl" && choice!=="incl")) return;
+  if(!DB.meta.vatSupplierDefaults || typeof DB.meta.vatSupplierDefaults!=="object") DB.meta.vatSupplierDefaults = {};
+  const existing = Object.keys(DB.meta.vatSupplierDefaults).find(k=>k.trim().toLowerCase()===name.toLowerCase());
+  DB.meta.vatSupplierDefaults[existing||name] = choice;
+}
+function vatChoiceOf(o){ return (o.costSupplierVat==="excl"||o.costSupplierVat==="incl")? o.costSupplierVat : ""; }
+function orderVat(o){
+  if(!vatOn() || o.costSupplierVat!=="excl") return 0;
+  return round2((Number(o.costSupplier)||0) * vatRate());
+}
+function ordersMissingVat(ords){
+  return ords.filter(o=>(Number(o.costSupplier)||0)>0 && !vatChoiceOf(o));
+}
+
 /* ---------------- computed figures ---------------- */
 function ordersForMonth(m){ return DB.orders.filter(o=>o.month===m); }
 function txForMonth(m){ return DB.transactions.filter(t=>monthOf(t.date)===m); }
@@ -559,8 +591,14 @@ function monthFigures(m){
   const byCategory = {};
   txs.forEach(t=>{ byCategory[t.category||"Uncategorized"] = (byCategory[t.category||"Uncategorized"]||0) + Number(t.amount||0); });
   const netProfit = grossProfit - totalExpenses;
-  const adReserve = Math.max(netProfit,0) * DB.meta.adReservePct;
-  const distributable = netProfit - adReserve;
+  // VAT on ex-VAT supplier costs is set aside for Chris first — it comes out of the pool before the reserve and split.
+  const vatOrders = ords.filter(o=>orderVat(o)>0);
+  const vatBySupplier = {};
+  vatOrders.forEach(o=>{ const g=supplierGroup(o); vatBySupplier[g]=round2((vatBySupplier[g]||0)+orderVat(o)); });
+  const vatTotal = vatOrders.reduce((s,o)=>s+orderVat(o),0);
+  const profitAfterVat = netProfit - vatTotal;
+  const adReserve = Math.max(profitAfterVat,0) * DB.meta.adReservePct;
+  const distributable = profitAfterVat - adReserve;
   // Split between shareholders (Riccardo/Anna) by their configured percentage of distributable profit.
   // Chris is no longer a shareholder — he isn't part of this split at all.
   const split = {};
@@ -571,7 +609,7 @@ function monthFigures(m){
   // Ticket sales (Pack Life Gym events) remain Chris's own separate income — not part of the PLS profit split.
   const ticketProfit = ticketsForMonth(m).reduce((s,t)=>s+((Number(t.costToClient)||0)-(Number(t.yocoFees)||0)),0);
   const margin = revenue? netProfit/revenue : 0;
-  return {revenue,cogs,grossProfit,totalExpenses,byCategory,netProfit,adReserve,distributable,ticketProfit,split,margin};
+  return {revenue,cogs,grossProfit,totalExpenses,byCategory,netProfit,vatTotal,vatBySupplier,vatOrders,profitAfterVat,adReserve,distributable,ticketProfit,split,margin};
 }
 function settlementForMonth(m){
   const ords = ordersForMonth(m);
@@ -585,17 +623,21 @@ function settlementForMonth(m){
   // Chris has no profit share — this is purely a supplier-cost pass-through/settlement.
   // If Chris is holding a Payflex surplus, he owes the business that amount (negative transfer = he owes).
   // If Payflex fell short of what he paid suppliers, the business sends him the shortfall.
-  const transferToChris = -payflexNet;
-  return { payflexIn, centralIn, supplierOwedToChris, payflexNet, transferToChris, ...f };
+  // VAT on ex-VAT supplier costs is owed to Chris on top of the supplier/Payflex gap, whoever fronts the suppliers.
+  const vatToChris = f.vatTotal;
+  const transferToChris = -payflexNet + vatToChris;
+  return { payflexIn, centralIn, supplierOwedToChris, payflexNet, vatToChris, transferToChris, ...f };
 }
 function yearFigures(){
-  const totals = {revenue:0,cogs:0,grossProfit:0,totalExpenses:0,netProfit:0,adReserve:0,distributable:0,ticketProfit:0,chrisSettlement:0,split:{},byCategory:{}};
+  const totals = {revenue:0,cogs:0,grossProfit:0,totalExpenses:0,netProfit:0,vatTotal:0,profitAfterVat:0,vatBySupplier:{},adReserve:0,distributable:0,ticketProfit:0,chrisSettlement:0,split:{},byCategory:{}};
   DB.meta.partners.forEach(p=>totals.split[p]=0);
   MONTHS.forEach(m=>{
     const f=monthFigures(m);
     const s=settlementForMonth(m);
     totals.revenue+=f.revenue; totals.cogs+=f.cogs; totals.grossProfit+=f.grossProfit;
     totals.totalExpenses+=f.totalExpenses; totals.netProfit+=f.netProfit; totals.adReserve+=f.adReserve;
+    totals.vatTotal+=f.vatTotal; totals.profitAfterVat+=f.profitAfterVat;
+    Object.entries(f.vatBySupplier).forEach(([g,amt])=>{ totals.vatBySupplier[g]=round2((totals.vatBySupplier[g]||0)+amt); });
     totals.distributable+=f.distributable; totals.ticketProfit+=f.ticketProfit;
     totals.chrisSettlement+=s.transferToChris;
     DB.meta.partners.forEach(p=>{ totals.split[p]+=f.split[p]||0; });
@@ -682,10 +724,10 @@ async function handleSupplierPdf(file){
     const box = document.getElementById("skuPaste");
     if(lines.length){
       box.value = lines.join("\n");
-      toast(`Found ${matchedCount} SKU${matchedCount===1?'':'s'} we recognise in the PDF — check the numbers, then click Match`);
+      toast(`Found ${matchedCount} SKU${matchedCount===1?'':'s'} we recognise in the PDF — check the numbers, then click Review`);
     } else {
       box.value = text.slice(0,2000);
-      toast("Couldn't spot any known SKUs automatically — pasted the raw PDF text below, tidy it into \"SKU, cost\" lines and click Match");
+      toast("Couldn't spot any known SKUs automatically — pasted the raw PDF text below, tidy it into \"SKU, cost\" lines and click Review");
     }
     const attach = document.getElementById("attachInvoiceDoc");
     if(attach) attach.checked = true;
@@ -728,33 +770,39 @@ function findOrdersForSupplierSku(supplierSku){
   }
   return {orders:[], via:"none"};
 }
+// Which orders a supplier-invoice line writes to. `claimed` holds orders already filled by earlier lines in the
+// same pass, so the review preview and the real apply always pick exactly the same targets.
+function supplierCostTargets(p, claimed){
+  const {orders, via} = findOrdersForSupplierSku(p.sku);
+  if(!orders.length) return {targets:[], via:"none"};
+  const hasCost = o=> !!o.costSupplier || claimed.has(o.id);
+  if(via==="exact") return {targets:[orders.find(o=>!hasCost(o)) || orders[0]], via};
+  // alias / prefix matches can hit several size/variant rows at once — apply to the ones still unresolved
+  const open = orders.filter(o=>!hasCost(o));
+  return {targets: open.length? open : orders, via};
+}
 function applySupplierCosts(pairs){
   const unmatched = [];
   let prefixCount=0, aliasCount=0;
+  const claimed = new Set();
   const fillQty = (o,p)=>{ if(p.qty && (!o.qty || o.qty===1)) o.qty = p.qty; };
   const fillOrderNo = (o,p)=>{ if(p.supplierOrderNo) o.supplierOrderNo = p.supplierOrderNo; };
   pairs.forEach(p=>{
     if(!(p.sku||"").trim()) return;
-    const {orders, via} = findOrdersForSupplierSku(p.sku);
-    if(!orders.length){ unmatched.push(p); return; }
-    if(via==="exact"){
-      const target = orders.find(o=>!o.costSupplier) || orders[0];
-      target.costSupplier = p.cost;
-      if(p.supplierName) target.supplier = p.supplierName;
-      fillQty(target, p);
-      fillOrderNo(target, p);
-    } else {
-      // alias / prefix matches can hit several size/variant rows at once — apply to the ones still unresolved
-      const targets = orders.filter(o=>!o.costSupplier);
-      const toUpdate = targets.length? targets : orders;
-      toUpdate.forEach(o=>{
-        o.costSupplier = p.cost;
-        if(p.supplierName) o.supplier = p.supplierName;
-        fillQty(o, p);
-        fillOrderNo(o, p);
-      });
-      if(via==="prefix") prefixCount += toUpdate.length; else aliasCount += toUpdate.length;
-    }
+    const {targets, via} = supplierCostTargets(p, claimed);
+    if(!targets.length){ unmatched.push(p); return; }
+    targets.forEach(o=>{
+      o.costSupplier = p.cost;
+      // cost and VAT setting are written together: a new cost replaces any earlier VAT choice
+      if(p.vat!==undefined){
+        if(p.vat==="excl" || p.vat==="incl") o.costSupplierVat = p.vat; else delete o.costSupplierVat;
+      }
+      if(p.supplierName) o.supplier = p.supplierName;
+      fillQty(o, p);
+      fillOrderNo(o, p);
+      claimed.add(o.id);
+    });
+    if(via==="prefix") prefixCount += targets.length; else if(via==="alias") aliasCount += targets.length;
   });
   return {unmatched, prefixCount, aliasCount};
 }
@@ -796,11 +844,7 @@ function matchPastedSkus(){
     return {...p, cost, unitPrice, supplierName};
   });
   if(!pairs.length){ toast("Nothing to match — paste SKU and cost first, one per line"); return; }
-  const {unmatched, prefixCount, aliasCount} = applySupplierCosts(pairs);
-  attachSupplierDocIfRequested(pairs.length-unmatched.length, pairs.length, ()=>{
-    saveDB(true); render();
-    toast(matchSummaryText(pairs.length, unmatched.length, prefixCount, aliasCount));
-  });
+  startSupplierReview(pairs);
 }
 function matchSummaryText(total, unmatchedCount, prefixCount, aliasCount){
   const matched = total-unmatchedCount;
@@ -858,7 +902,7 @@ function startSupplierMapper(headers, rows, file){
       <p class="hint" id="supplierCostHint" style="margin:6px 0 14px;"></p>
       <div style="display:flex;justify-content:flex-end;gap:8px;">
         <button class="btn btn-secondary btn-sm" onclick="document.getElementById('supplierMapperHost').innerHTML=''">Cancel</button>
-        <button class="btn btn-primary btn-sm" onclick="confirmSupplierImport()">Match ${rows.length} rows</button>
+        <button class="btn btn-primary btn-sm" onclick="confirmSupplierImport()">Review ${rows.length} rows</button>
       </div>
     </div>
   `;
@@ -886,11 +930,122 @@ function confirmSupplierImport(){
       supplierName: supplierMapping.supplier? row[supplierMapping.supplier] : val("skuSupplierName").trim()
     };
   }).filter(p=>p.sku);
-  const {unmatched, prefixCount, aliasCount} = applySupplierCosts(pairs);
-  attachSupplierDocIfRequested(pairs.length-unmatched.length, pairs.length, ()=>{
-    document.getElementById("supplierMapperHost").innerHTML="";
+  document.getElementById("supplierMapperHost").innerHTML="";
+  startSupplierReview(pairs);
+}
+
+/* ---------- Supplier invoice review — shared by the pasted lines and the CSV/XLSX/PDF import ----------
+   Nothing is written to any order until Apply is clicked. */
+let supplierReview = null; // {rows:[matched lines], unmatched:[lines with no order]}
+function startSupplierReview(pairs){
+  const claimed = new Set();
+  const rows = [], unmatched = [];
+  pairs.forEach(p=>{
+    if(!(p.sku||"").trim()) return;
+    const line = {...p, supplierName: String(p.supplierName==null?"":p.supplierName).trim()};
+    const {targets, via} = supplierCostTargets(line, claimed);
+    if(!targets.length){ unmatched.push(line); return; }
+    targets.forEach(o=>claimed.add(o.id));
+    const supplier = line.supplierName || supplierGroup(targets[0]);
+    const prefill = vatDefaultFor(supplier);
+    rows.push({...line, via, orderIds:targets.map(o=>o.id), supplier, vat:prefill});
+  });
+  supplierReview = {rows, unmatched};
+  renderSupplierReview();
+  const host = document.getElementById("supplierReviewHost");
+  if(host) host.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+function vatSelectHTML(value, onchange){
+  return `<select style="border:1px solid var(--border);border-radius:6px;padding:4px 6px;" onchange="${onchange}">
+    <option value="excl" ${value==="excl"?"selected":""}>Excludes VAT</option>
+    <option value="incl" ${value==="incl"?"selected":""}>Includes VAT</option>
+    <option value="" ${!value?"selected":""}>Not set</option>
+  </select>`;
+}
+function renderSupplierReview(){
+  const host = document.getElementById("supplierReviewHost");
+  if(!host) return;
+  if(!supplierReview){ host.innerHTML=""; return; }
+  const {rows, unmatched} = supplierReview;
+  const orderName = id=>{ const o=DB.orders.find(x=>x.id===id); return o? `${esc(o.orderNo||"—")} · ${esc(o.product||"—")} · ${esc(o.month||"")} · now ${R(o.costSupplier)}` : ""; };
+  host.innerHTML = `
+    <div style="margin-top:16px;">
+      <div class="stat-label">Review before applying — ${rows.length} line${rows.length===1?"":"s"} matched${unmatched.length? `, ${unmatched.length} not found`:""}</div>
+      <p class="hint" style="margin:4px 0 10px;">Nothing has been written to your orders yet. Applying sets <b>Supplier Cost</b> and the <b>VAT setting</b> together on the matched orders, replacing any earlier values. Choose <b>Excludes VAT</b> when the supplier's price is before VAT — that VAT is then set aside and sent to Chris.</p>
+      ${rows.length? `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span style="font-size:13px;">Set all lines:</span>
+        <select style="border:1px solid var(--border);border-radius:6px;padding:4px 6px;" onchange="setAllSupplierReviewVat(this.value);this.value='';">
+          <option value="">Choose…</option><option value="excl">Excludes VAT</option><option value="incl">Includes VAT</option><option value="__unset">Not set</option>
+        </select>
+        <span class="hint" id="supplierReviewSummary" style="margin-left:auto;"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>SKU</th><th>Matched orders</th><th>Supplier</th><th class="num">Cost</th><th>VAT</th></tr></thead>
+          <tbody>
+            ${rows.map((r,i)=>`
+              <tr>
+                <td>${esc(r.sku)}${r.via==="prefix"?` <span class="tag">prefix</span>`:r.via==="alias"?` <span class="tag">mapped</span>`:""}</td>
+                <td><details><summary style="cursor:pointer;">${r.orderIds.length} order${r.orderIds.length===1?"":"s"}</summary>
+                  <div class="hint" style="margin-top:4px;">${r.orderIds.map(id=>`<div>${orderName(id)}</div>`).join("")}</div></details></td>
+                <td>${esc(r.supplier)}</td>
+                <td class="num">${R(r.cost)}${r.qty>1?`<div class="hint">qty ${r.qty}</div>`:""}</td>
+                <td>${vatSelectHTML(r.vat, `setSupplierReviewVat(${i}, this.value)`)}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>` : `<div class="banner">None of the lines matched an order, so there is nothing to apply.</div>`}
+      ${unmatched.length? `
+      <div class="stat-label" style="margin-top:14px;">Not found in Orders — these will NOT be applied</div>
+      <div class="table-wrap" style="margin-top:6px;"><table>
+        <thead><tr><th>SKU</th><th>Supplier</th><th class="num">Cost</th></tr></thead>
+        <tbody>${unmatched.map(u=>`<tr><td>${esc(u.sku)}</td><td>${esc(u.supplierName||"—")}</td><td class="num">${R(u.cost)}</td></tr>`).join("")}</tbody>
+      </table></div>` : ""}
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+        <button class="btn btn-secondary btn-sm" onclick="cancelSupplierReview()">Cancel</button>
+        <button class="btn btn-primary btn-sm" ${rows.length?"":"disabled"} onclick="applySupplierReview()">Apply to ${rows.reduce((n,r)=>n+r.orderIds.length,0)} order${rows.reduce((n,r)=>n+r.orderIds.length,0)===1?"":"s"}</button>
+      </div>
+    </div>`;
+  updateSupplierReviewSummary();
+}
+function updateSupplierReviewSummary(){
+  const el = document.getElementById("supplierReviewSummary");
+  if(!el || !supplierReview) return;
+  const c = {excl:0, incl:0, none:0};
+  supplierReview.rows.forEach(r=>{ c[r.vat==="excl"?"excl":r.vat==="incl"?"incl":"none"]++; });
+  el.textContent = `${c.excl} excl · ${c.incl} incl · ${c.none} not set`;
+}
+function setSupplierReviewVat(i, v){
+  if(!supplierReview || !supplierReview.rows[i]) return;
+  supplierReview.rows[i].vat = (v==="excl"||v==="incl")? v : "";
+  updateSupplierReviewSummary();
+}
+function setAllSupplierReviewVat(v){
+  if(!supplierReview || !v) return;
+  const choice = (v==="excl"||v==="incl")? v : "";
+  supplierReview.rows.forEach(r=>{ r.vat = choice; });
+  renderSupplierReview();
+}
+function cancelSupplierReview(){ supplierReview = null; renderSupplierReview(); }
+function applySupplierReview(){
+  if(!supplierReview || !supplierReview.rows.length) return;
+  const {rows, unmatched} = supplierReview;
+  const pairs = rows.map(r=>({sku:r.sku, cost:r.cost, unitPrice:r.unitPrice, qty:r.qty, supplierOrderNo:r.supplierOrderNo, supplierName:r.supplierName, vat:r.vat||""}));
+  const {unmatched:lost, prefixCount, aliasCount} = applySupplierCosts(pairs);
+  // Remember a supplier's choice as the future pre-fill — only when all of its lines agree on Excludes/Includes.
+  const bySupplier = {};
+  rows.forEach(r=>{ (bySupplier[r.supplier] = bySupplier[r.supplier]||[]).push(r.vat); });
+  Object.entries(bySupplier).forEach(([sup, choices])=>{
+    const first = choices[0];
+    if((first==="excl"||first==="incl") && choices.every(c=>c===first) && first!==vatDefaultFor(sup)) setVatDefault(sup, first);
+  });
+  const total = rows.length + unmatched.length;
+  const unmatchedCount = unmatched.length + lost.length;
+  supplierReview = null;
+  attachSupplierDocIfRequested(total-unmatchedCount, total, ()=>{
     saveDB(true);
-    toast(matchSummaryText(pairs.length, unmatched.length, prefixCount, aliasCount));
+    toast(matchSummaryText(total, unmatchedCount, prefixCount, aliasCount));
     render();
   });
 }
@@ -902,6 +1057,7 @@ function toggleSupplierPaid(id){
 }
 function renderSuppliers(){
   pageHeader("Supplier Payments");
+  supplierReview = null;
   const ords = ordersForMonth(selectedMonth);
   const groups = {};
   ords.forEach(o=>{
@@ -950,7 +1106,7 @@ function renderSuppliers(){
 
     <div class="section-head"><h2>Match a supplier invoice to your orders</h2><span class="hint">Fill in the supplier cost Wix doesn't know about, by SKU</span></div>
     <div class="card card-lg">
-      <p style="font-size:13px;color:var(--text-secondary);margin-top:0;">Upload the invoice from PUMA or another supplier — CSV, XLSX, or <b>PDF</b> — or just paste the numbers straight in below. This fills in the <b>Supplier Cost</b> on any order with a matching SKU automatically. PDFs are read automatically where possible: it looks for SKUs already in your Orders and the nearest price next to them, then lets you check the numbers before anything is applied — always double-check against the actual invoice before matching.</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:0;">Upload the invoice from PUMA or another supplier — CSV, XLSX, or <b>PDF</b> — or just paste the numbers straight in below. This fills in the <b>Supplier Cost</b> on any order with a matching SKU automatically. PDFs are read automatically where possible: it looks for SKUs already in your Orders and the nearest price next to them, then lets you check the numbers before anything is applied — always double-check against the actual invoice before matching. Every import, pasted or uploaded, goes through a <b>review step</b> where you also say whether the supplier's prices <b>include or exclude VAT</b>; nothing is written to your orders until you click Apply.</p>
       <div class="field-row">
         <div class="field">
           <label>Paste SKU + cost — one per line ("SKU, cost" or "SKU, cost, qty")</label>
@@ -968,8 +1124,9 @@ function renderSuppliers(){
         </div>
       </div>
       <div id="supplierMapperHost"></div>
+      <div id="supplierReviewHost"></div>
       <div style="display:flex;justify-content:flex-end;margin-top:10px;">
-        <button class="btn btn-primary btn-sm" onclick="matchPastedSkus()">Match pasted SKUs</button>
+        <button class="btn btn-primary btn-sm" onclick="matchPastedSkus()">Review pasted SKUs</button>
       </div>
     </div>
 
@@ -1048,7 +1205,7 @@ function renderDashboard(){
       <div class="card">
         <div class="stat-label">Net Profit</div>
         <div class="stat-value ${f.netProfit>=0?'pos':'neg'}">${R(f.netProfit)}</div>
-        <div class="stat-sub">Margin ${pct(f.margin)}</div>
+        <div class="stat-sub">Margin ${pct(f.margin)}${vatOn()? ` · ${R(f.vatTotal)} VAT to Chris comes out of this`:""}</div>
       </div>
       <div class="card">
         <div class="stat-label">Marketing Reserve (${pct(DB.meta.adReservePct)})</div>
@@ -1067,7 +1224,7 @@ function renderDashboard(){
       ${categoryBreakdownTable(y.byCategory, y.totalExpenses)}
     </div>
 
-    <div class="section-head"><h2>Profit split — ${selectedMonth}</h2><span class="hint">${DB.meta.partners.map(p=>`${p} ${pct(DB.meta.splitPercents[p]||0)}`).join(" · ")} after a ${pct(DB.meta.adReservePct)} marketing reserve</span></div>
+    <div class="section-head"><h2>Profit split — ${selectedMonth}</h2><span class="hint">${DB.meta.partners.map(p=>`${p} ${pct(DB.meta.splitPercents[p]||0)}`).join(" · ")} after ${vatOn()? "VAT to Chris and ":""}a ${pct(DB.meta.adReservePct)} marketing reserve</span></div>
     <div class="card card-lg">
       <div class="rings-wrap">
         ${renderRings(f.split,150)}
@@ -1096,6 +1253,7 @@ function renderDashboard(){
           <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft);"><span>Revenue</span><b class="stat" style="font-family:var(--font-mono)">${R(y.revenue)}</b></div>
           <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft);"><span>Expenses (COGS + overheads)</span><b style="font-family:var(--font-mono)">${R(y.cogs+y.totalExpenses)}</b></div>
           <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft);"><span>Net profit</span><b style="font-family:var(--font-mono)">${R(y.netProfit)}</b></div>
+          ${vatOn()? `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-soft);"><span>VAT sent to Chris</span><b style="font-family:var(--font-mono)">${R(y.vatTotal)}</b></div>`:""}
           <div style="display:flex;justify-content:space-between;padding:6px 0;"><span>Distributed to shareholders (Anna + Riccardo)</span><b style="font-family:var(--font-mono)">${R(y.distributable)}</b></div>
         </div>
       </div>
@@ -1315,6 +1473,7 @@ function exportBusinessOverviewPDF(){
       <td style="text-align:right;">${R(pb.Ikhoka)}</td>
       <td style="text-align:right;">${R(pb.Payflex)}</td>
       <td style="text-align:right;">${R(f.netProfit)}</td>
+      <td style="text-align:right;">${R(f.vatTotal)}</td>
       <td style="text-align:right;">${R(f.adReserve)}</td>
       ${DB.meta.partners.map(p=>`<td style="text-align:right;">${R(f.split[p])}</td>`).join("")}
       <td style="text-align:right;color:${s.transferToChris<0?'#FF3B30':'inherit'}">${s.transferToChris<0? `(${R(Math.abs(s.transferToChris))})` : R(s.transferToChris)}</td>
@@ -1328,6 +1487,7 @@ function exportBusinessOverviewPDF(){
     <td style="text-align:right;">${R(totalPb.Ikhoka)}</td>
     <td style="text-align:right;">${R(totalPb.Payflex)}</td>
     <td style="text-align:right;">${R(y.netProfit)}</td>
+    <td style="text-align:right;">${R(y.vatTotal)}</td>
     <td style="text-align:right;">${R(y.adReserve)}</td>
     ${DB.meta.partners.map(p=>`<td style="text-align:right;">${R(y.split[p])}</td>`).join("")}
     <td style="text-align:right;color:${y.chrisSettlement<0?'#FF3B30':'inherit'}">${y.chrisSettlement<0? `(${R(Math.abs(y.chrisSettlement))})` : R(y.chrisSettlement)}</td>
@@ -1365,14 +1525,21 @@ function exportBusinessOverviewPDF(){
       <tr>
         <th>Month</th><th style="text-align:right;">Revenue</th>
         <th style="text-align:right;">EFT</th><th style="text-align:right;">Yoco</th><th style="text-align:right;">Ikhoka</th><th style="text-align:right;">Payflex</th>
-        <th style="text-align:right;">Net Profit</th><th style="text-align:right;">Marketing Reserve</th>
+        <th style="text-align:right;">Net Profit</th><th style="text-align:right;">VAT (to Chris)</th><th style="text-align:right;">Marketing Reserve</th>
         ${DB.meta.partners.map(p=>`<th style="text-align:right;">${esc(p)}</th>`).join("")}
         <th style="text-align:right;">Chris (settlement)</th>
       </tr>
       ${monthRowsHtml}
       ${totalRow}
     </table>
-    <p style="font-size:11px;color:#6E6E73;margin-top:10px;">Chris's column is money owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round. "Marketing Reserve" is ${pct(DB.meta.adReservePct)} of net profit set aside before the split — it is not the same as actual advertising spend, see the category breakdown below for that.</p>
+    <p style="font-size:11px;color:#6E6E73;margin-top:10px;">Chris's column is money owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round${vatOn()? ", and includes the VAT in the VAT column":""}. "VAT (to Chris)" is the VAT on supplier costs quoted without VAT, taken off net profit before the reserve. "Marketing Reserve" is ${pct(DB.meta.adReservePct)} of profit after VAT set aside before the split — it is not the same as actual advertising spend, see the category breakdown below for that.</p>
+
+    <h2>VAT to send to Chris by supplier — full year (${R(y.vatTotal)} total)</h2>
+    <table>
+      <tr><th>Supplier</th><th style="text-align:right;">VAT</th></tr>
+      ${Object.keys(y.vatBySupplier).sort().map(g=>`<tr><td>${esc(g)}</td><td style="text-align:right;">${R(y.vatBySupplier[g])}</td></tr>`).join("") || `<tr><td colspan="2">No VAT on supplier costs</td></tr>`}
+      <tr style="font-weight:700;background:#FBFBFD;"><td>Total</td><td style="text-align:right;">${R(y.vatTotal)}</td></tr>
+    </table>
 
     <h2>Expenses by category — full year (actual spend, ${R(y.totalExpenses)} total)</h2>
     <table>
@@ -1397,14 +1564,17 @@ function exportBusinessOverviewCSV(){
     csv += `${q(p)},${t.earned.toFixed(2)},${t.paid.toFixed(2)},${Math.abs(t.balance).toFixed(2)},${q(ledgerStatusLabel(p,t))}\n`;
   });
   csv += "\nMonthly breakdown\n";
-  csv += `Month,Revenue,EFT,Yoco,Ikhoka,Payflex,Net Profit,Marketing Reserve,${DB.meta.partners.join(",")},Chris (settlement)\n`;
+  csv += `Month,Revenue,EFT,Yoco,Ikhoka,Payflex,Net Profit,VAT (to Chris),Marketing Reserve,${DB.meta.partners.join(",")},Chris (settlement)\n`;
   const totalPb = {EFT:0,Yoco:0,Ikhoka:0,Payflex:0};
   MONTHS.forEach(m=>{
     const f = monthFigures(m), s = settlementForMonth(m), pb = monthPaymentBreakdown(m);
     PAYMENT_METHODS.forEach(pm=>totalPb[pm]+=pb[pm]);
-    csv += `${m},${f.revenue.toFixed(2)},${pb.EFT.toFixed(2)},${pb.Yoco.toFixed(2)},${pb.Ikhoka.toFixed(2)},${pb.Payflex.toFixed(2)},${f.netProfit.toFixed(2)},${f.adReserve.toFixed(2)},${DB.meta.partners.map(p=>f.split[p].toFixed(2)).join(",")},${s.transferToChris.toFixed(2)}\n`;
+    csv += `${m},${f.revenue.toFixed(2)},${pb.EFT.toFixed(2)},${pb.Yoco.toFixed(2)},${pb.Ikhoka.toFixed(2)},${pb.Payflex.toFixed(2)},${f.netProfit.toFixed(2)},${f.vatTotal.toFixed(2)},${f.adReserve.toFixed(2)},${DB.meta.partners.map(p=>f.split[p].toFixed(2)).join(",")},${s.transferToChris.toFixed(2)}\n`;
   });
-  csv += `TOTAL,${y.revenue.toFixed(2)},${totalPb.EFT.toFixed(2)},${totalPb.Yoco.toFixed(2)},${totalPb.Ikhoka.toFixed(2)},${totalPb.Payflex.toFixed(2)},${y.netProfit.toFixed(2)},${y.adReserve.toFixed(2)},${DB.meta.partners.map(p=>y.split[p].toFixed(2)).join(",")},${y.chrisSettlement.toFixed(2)}\n`;
+  csv += `TOTAL,${y.revenue.toFixed(2)},${totalPb.EFT.toFixed(2)},${totalPb.Yoco.toFixed(2)},${totalPb.Ikhoka.toFixed(2)},${totalPb.Payflex.toFixed(2)},${y.netProfit.toFixed(2)},${y.vatTotal.toFixed(2)},${y.adReserve.toFixed(2)},${DB.meta.partners.map(p=>y.split[p].toFixed(2)).join(",")},${y.chrisSettlement.toFixed(2)}\n`;
+  csv += "\nVAT to send to Chris by supplier - full year\nSupplier,VAT\n";
+  Object.keys(y.vatBySupplier).sort().forEach(g=>{ csv += `${q(g)},${y.vatBySupplier[g].toFixed(2)}\n`; });
+  csv += `${q("Total")},${y.vatTotal.toFixed(2)}\n`;
   csv += "\nExpenses by category - full year (actual spend, not the marketing reserve above)\nCategory,Amount,% of expenses\n";
   Object.entries(y.byCategory).sort((a,b)=>b[1]-a[1]).forEach(([cat,amt])=>{
     csv += `${q(cat)},${amt.toFixed(2)},${y.totalExpenses? (amt/y.totalExpenses*100).toFixed(1):"0.0"}%\n`;
@@ -1431,7 +1601,11 @@ function exportChrisStatementPDF(month){
       <td>${esc(o.paymentMethod||"EFT")}</td>
       <td style="text-align:right;">${R(o.costToClient)}</td>
       <td style="text-align:right;">${R(o.costSupplier)}</td>
+      <td>${esc(VAT_LABELS[vatChoiceOf(o)])}</td>
+      <td style="text-align:right;">${R(orderVat(o))}</td>
     </tr>`).join("");
+  const vatRows = Object.keys(s.vatBySupplier).sort().map(g=>`<tr><td>${esc(g)}</td><td style="text-align:right;">${R(s.vatBySupplier[g])}</td></tr>`).join("");
+  const missingVat = vatOn()? ordersMissingVat(ords).length : 0;
   const owesLine = s.transferToChris<0
     ? `<p class="big red">Chris owes the business ${R(Math.abs(s.transferToChris))}</p>`
     : `<p class="big green">The business owes Chris ${R(s.transferToChris)}</p>`;
@@ -1470,17 +1644,26 @@ function exportChrisStatementPDF(month){
       <tr class="total"><td>Total owed to suppliers</td><td style="text-align:right;">${R(s.supplierOwedToChris)}</td></tr>
     </table>
 
+    <h2>VAT to send to Chris — supplier costs quoted without VAT (${pct(vatRate())})</h2>
+    <table>
+      <tr><th>Supplier</th><th style="text-align:right;">VAT</th></tr>
+      ${vatRows || `<tr><td colspan="2">No VAT on supplier costs this month</td></tr>`}
+      <tr class="total"><td>Total VAT to send Chris</td><td style="text-align:right;">${R(s.vatToChris)}</td></tr>
+    </table>
+    ${missingVat? `<p style="font-size:11px;color:#B4690E;">${missingVat} order${missingVat===1?" has":"s have"} a supplier cost but no VAT setting — no VAT is included for ${missingVat===1?"it":"them"}.</p>`:""}
+
     <h2>Settlement — why Chris owes / is owed money</h2>
     <table>
       <tr><td>Payflex cash Chris is holding</td><td style="text-align:right;">${R(s.payflexIn)}</td></tr>
       <tr><td>Less: supplier payments Chris needs to make</td><td style="text-align:right;">- ${R(s.supplierOwedToChris)}</td></tr>
+      <tr><td>Plus: VAT on supplier costs quoted without VAT</td><td style="text-align:right;">+ ${R(s.vatToChris)}</td></tr>
     </table>
     ${owesLine}
 
     <h2>Order detail</h2>
     <table>
-      <tr><th>Date</th><th>Order No</th><th>Supplier</th><th>Product</th><th>Paid via</th><th style="text-align:right;">Client paid</th><th style="text-align:right;">Supplier cost</th></tr>
-      ${orderRows || `<tr><td colspan="7">No orders logged for ${month}</td></tr>`}
+      <tr><th>Date</th><th>Order No</th><th>Supplier</th><th>Product</th><th>Paid via</th><th style="text-align:right;">Client paid</th><th style="text-align:right;">Supplier cost</th><th>VAT setting</th><th style="text-align:right;">VAT</th></tr>
+      ${orderRows || `<tr><td colspan="9">No orders logged for ${month}</td></tr>`}
     </table>
     </body></html>`);
   w.document.close();
@@ -1501,13 +1684,19 @@ function exportChrisStatementCSV(month){
   csv += `Supplier payments owed\nSupplier,Owed\n`;
   Object.keys(groups).sort().forEach(g=>{ csv += `${q(g)},${groups[g].toFixed(2)}\n`; });
   csv += `Total owed to suppliers,${s.supplierOwedToChris.toFixed(2)}\n\n`;
+  csv += `VAT to send to Chris (supplier costs quoted without VAT at ${pct(vatRate())})\nSupplier,VAT\n`;
+  Object.keys(s.vatBySupplier).sort().forEach(g=>{ csv += `${q(g)},${s.vatBySupplier[g].toFixed(2)}\n`; });
+  csv += `Total VAT to send Chris,${s.vatToChris.toFixed(2)}\n`;
+  if(vatOn() && ordersMissingVat(ords).length) csv += `Orders with a supplier cost but no VAT setting (no VAT included),${ordersMissingVat(ords).length}\n`;
+  csv += `\n`;
   csv += `Settlement\n`;
   csv += `Payflex cash held,${s.payflexIn.toFixed(2)}\n`;
   csv += `Less supplier payments owed,-${s.supplierOwedToChris.toFixed(2)}\n`;
+  csv += `Plus VAT on supplier costs,${s.vatToChris.toFixed(2)}\n`;
   csv += `${s.transferToChris<0? "Chris owes the business" : "Business owes Chris"},${Math.abs(s.transferToChris).toFixed(2)}\n\n`;
-  csv += `Order detail\nDate,Order No,Supplier,Product,Paid via,Client Paid,Supplier Cost\n`;
+  csv += `Order detail\nDate,Order No,Supplier,Product,Paid via,Client Paid,Supplier Cost,VAT Setting,VAT\n`;
   ords.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(o=>{
-    csv += `${o.date? new Date(o.date).toLocaleDateString('en-ZA'):""},${q(o.orderNo)},${q(supplierGroup(o))},${q(o.product)},${q(o.paymentMethod||"EFT")},${(+o.costToClient||0).toFixed(2)},${(+o.costSupplier||0).toFixed(2)}\n`;
+    csv += `${o.date? new Date(o.date).toLocaleDateString('en-ZA'):""},${q(o.orderNo)},${q(supplierGroup(o))},${q(o.product)},${q(o.paymentMethod||"EFT")},${(+o.costToClient||0).toFixed(2)},${(+o.costSupplier||0).toFixed(2)},${q(VAT_LABELS[vatChoiceOf(o)])},${orderVat(o).toFixed(2)}\n`;
   });
   const blob = new Blob([csv],{type:"text/csv"});
   const a = document.createElement("a");
@@ -1541,7 +1730,16 @@ function exportMonthCategoryBreakdownPDF(month){
       <tr><td>Revenue</td><td style="text-align:right;">${R(f.revenue)}</td></tr>
       <tr><td>Total expenses</td><td style="text-align:right;">${R(f.totalExpenses)}</td></tr>
       <tr><td>Net profit</td><td style="text-align:right;">${R(f.netProfit)}</td></tr>
-      <tr><td>Marketing reserve (${pct(DB.meta.adReservePct)} of net profit — not the same as ad spend)</td><td style="text-align:right;">${R(f.adReserve)}</td></tr>
+      <tr><td>VAT to send to Chris (supplier costs quoted without VAT)</td><td style="text-align:right;">${R(f.vatTotal)}</td></tr>
+      <tr><td>Profit after VAT</td><td style="text-align:right;">${R(f.profitAfterVat)}</td></tr>
+      <tr><td>Marketing reserve (${pct(DB.meta.adReservePct)} of profit after VAT — not the same as ad spend)</td><td style="text-align:right;">${R(f.adReserve)}</td></tr>
+    </table>
+
+    <h2>VAT to send to Chris by supplier</h2>
+    <table>
+      <tr><th>Supplier</th><th style="text-align:right;">VAT</th></tr>
+      ${Object.keys(f.vatBySupplier).sort().map(g=>`<tr><td>${esc(g)}</td><td style="text-align:right;">${R(f.vatBySupplier[g])}</td></tr>`).join("") || `<tr><td colspan="2">No VAT on supplier costs for ${month}</td></tr>`}
+      <tr class="total"><td>Total</td><td style="text-align:right;">${R(f.vatTotal)}</td></tr>
     </table>
 
     <h2>Expenses by category — where the money actually went</h2>
@@ -1564,7 +1762,12 @@ function exportMonthCategoryBreakdownCSV(month){
   csv += `Revenue,${f.revenue.toFixed(2)}\n`;
   csv += `Total expenses,${f.totalExpenses.toFixed(2)}\n`;
   csv += `Net profit,${f.netProfit.toFixed(2)}\n`;
-  csv += `Marketing reserve (${pct(DB.meta.adReservePct)} of net profit - not ad spend),${f.adReserve.toFixed(2)}\n\n`;
+  csv += `VAT to send to Chris,${f.vatTotal.toFixed(2)}\n`;
+  csv += `Profit after VAT,${f.profitAfterVat.toFixed(2)}\n`;
+  csv += `Marketing reserve (${pct(DB.meta.adReservePct)} of profit after VAT - not ad spend),${f.adReserve.toFixed(2)}\n\n`;
+  csv += `VAT to send to Chris by supplier\nSupplier,VAT\n`;
+  Object.keys(f.vatBySupplier).sort().forEach(g=>{ csv += `${q(g)},${f.vatBySupplier[g].toFixed(2)}\n`; });
+  csv += `${q("Total")},${f.vatTotal.toFixed(2)}\n\n`;
   csv += `Expenses by category\nCategory,Amount,% of expenses\n`;
   Object.entries(f.byCategory).sort((a,b)=>b[1]-a[1]).forEach(([cat,amt])=>{
     csv += `${q(cat)},${amt.toFixed(2)},${f.totalExpenses? (amt/f.totalExpenses*100).toFixed(1):"0.0"}%\n`;
@@ -1576,13 +1779,120 @@ function exportMonthCategoryBreakdownCSV(month){
   a.download = `expense-breakdown-${month}.csv`;
   a.click();
 }
+/* ---------- VAT bulk tool (Settlement page) ---------- */
+let vatBulk = {supplier:"", from:0, to:11, sel:new Set()};
+function vatBulkCandidates(){
+  return DB.orders.filter(o=>{
+    if((Number(o.costSupplier)||0)<=0 || vatChoiceOf(o)) return false;
+    const mi = MONTHS.indexOf(o.month);
+    if(mi<vatBulk.from || mi>vatBulk.to) return false;
+    return !vatBulk.supplier || supplierGroup(o)===vatBulk.supplier;
+  }).sort((a,b)=>MONTHS.indexOf(a.month)-MONTHS.indexOf(b.month) || new Date(a.date)-new Date(b.date));
+}
+function setVatBulkFilter(key, v){
+  if(key==="supplier") vatBulk.supplier = v;
+  else vatBulk[key] = parseInt(v);
+  if(vatBulk.from>vatBulk.to){ if(key==="from") vatBulk.to = vatBulk.from; else vatBulk.from = vatBulk.to; }
+  vatBulk.sel.clear();
+  render();
+  const el = document.getElementById("vatBulkTool"); if(el) el.scrollIntoView({block:"nearest"});
+}
+function updateVatBulkCount(){
+  const el = document.getElementById("vatBulkCount");
+  if(el) el.textContent = vatBulk.sel.size;
+  document.querySelectorAll(".vatBulkSelBtn").forEach(b=>{ b.disabled = !vatBulk.sel.size; });
+}
+function toggleVatBulk(id, checked){
+  if(checked) vatBulk.sel.add(id); else vatBulk.sel.delete(id);
+  updateVatBulkCount();
+}
+function toggleVatBulkAll(checked){
+  vatBulkCandidates().forEach(o=>{ if(checked) vatBulk.sel.add(o.id); else vatBulk.sel.delete(o.id); });
+  document.querySelectorAll(".vatBulkChk").forEach(c=>{ c.checked = checked; });
+  updateVatBulkCount();
+}
+function markVatBulk(choice, scope){
+  const targets = scope==="all"? vatBulkCandidates() : vatBulkCandidates().filter(o=>vatBulk.sel.has(o.id));
+  if(!targets.length){ toast("No orders to update"); return; }
+  const label = choice==="excl"? "EXCLUDE VAT (VAT will be added and sent to Chris)" : "INCLUDE VAT (no VAT added)";
+  if(!confirm(`Mark ${targets.length} order${targets.length===1?"":"s"} as supplier cost ${label}? This changes the figures for the months they sit in.`)) return;
+  targets.forEach(o=>{ o.costSupplierVat = choice; });
+  vatBulk.sel.clear();
+  // remember the choice as the supplier's future pre-fill when the whole batch is a single supplier
+  const sups = [...new Set(targets.map(supplierGroup))];
+  if(sups.length===1 && sups[0]!=="Other" && choice!==vatDefaultFor(sups[0])) setVatDefault(sups[0], choice);
+  saveDB(true); render();
+  toast(`${targets.length} order${targets.length===1?"":"s"} marked "${VAT_LABELS[choice]}"`);
+}
+function vatBulkToolHTML(){
+  const cands = vatBulkCandidates();
+  const allSuppliers = [...new Set(DB.orders.filter(o=>(Number(o.costSupplier)||0)>0 && !vatChoiceOf(o)).map(supplierGroup))].sort();
+  const monthSel = (key)=>`<select onchange="setVatBulkFilter('${key}', this.value)" style="border:1px solid var(--border);border-radius:6px;padding:4px 6px;">${MONTHS.map((m,i)=>`<option value="${i}" ${vatBulk[key]===i?"selected":""}>${m}</option>`).join("")}</select>`;
+  const n = cands.length;
+  return `
+    <div class="section-head" id="vatBulkTool"><h2>Set VAT on existing supplier costs</h2><span class="hint">Orders with a supplier cost but no VAT setting — they stay out of the VAT figure until flagged</span></div>
+    <div class="card card-lg">
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;font-size:13px;">
+        <span>Supplier</span>
+        <select onchange="setVatBulkFilter('supplier', this.value)" style="border:1px solid var(--border);border-radius:6px;padding:4px 6px;">
+          <option value="">All suppliers</option>${allSuppliers.map(g=>`<option ${vatBulk.supplier===g?"selected":""}>${esc(g)}</option>`).join("")}
+        </select>
+        <span>Months</span>${monthSel("from")}<span>to</span>${monthSel("to")}
+        <span class="hint" style="margin-left:auto;">${n} order${n===1?"":"s"} without a VAT setting</span>
+      </div>
+      ${n? `
+      <div class="table-wrap" style="max-height:340px;overflow:auto;">
+        <table>
+          <thead><tr><th style="width:36px;"><input type="checkbox" onchange="toggleVatBulkAll(this.checked)" ${cands.every(o=>vatBulk.sel.has(o.id))?"checked":""}></th><th>Month</th><th>Order No</th><th>Supplier</th><th>Product</th><th class="num">Supplier cost</th></tr></thead>
+          <tbody>${cands.map(o=>`
+            <tr>
+              <td><input type="checkbox" class="vatBulkChk" ${vatBulk.sel.has(o.id)?"checked":""} onchange="toggleVatBulk('${o.id}', this.checked)"></td>
+              <td>${esc(o.month||"—")}</td><td>${esc(o.orderNo||"—")}</td><td>${esc(supplierGroup(o))}</td><td>${esc(o.product||"—")}</td><td class="num">${R(o.costSupplier)}</td>
+            </tr>`).join("")}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;margin-top:12px;">
+        <span style="font-size:13px;"><b id="vatBulkCount">${vatBulk.sel.size}</b> selected</span>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <button class="btn btn-secondary btn-sm vatBulkSelBtn" ${vatBulk.sel.size?"":"disabled"} onclick="markVatBulk('excl','selected')">Selected: Excludes VAT</button>
+          <button class="btn btn-secondary btn-sm vatBulkSelBtn" ${vatBulk.sel.size?"":"disabled"} onclick="markVatBulk('incl','selected')">Selected: Includes VAT</button>
+          <button class="btn btn-primary btn-sm" onclick="markVatBulk('excl','all')">All ${n} shown: Excludes VAT</button>
+          <button class="btn btn-primary btn-sm" onclick="markVatBulk('incl','all')">All ${n} shown: Includes VAT</button>
+        </div>
+      </div>` : `<div class="empty-state" style="padding:20px;">Every order with a supplier cost in this range has a VAT setting</div>`}
+    </div>`;
+}
+function vatCardHTML(s){
+  const suppliers = Object.keys(s.vatBySupplier).sort();
+  return `
+    <div class="card card-lg" style="margin-bottom:16px;">
+      <div class="stat-label">VAT to send to Chris · ${selectedMonth}</div>
+      <div class="stat-value">${R(s.vatToChris)}</div>
+      <div class="stat-sub">${vatOn()
+        ? `${pct(vatRate())} VAT on the supplier cost of ${s.vatOrders.length} order${s.vatOrders.length===1?"":"s"} quoted without VAT. Set aside from sales and sent to Chris on top of the supplier/Payflex gap; taken out of profit before the marketing reserve and split.`
+        : "VAT tracking is switched off — see Settings"}</div>
+      ${suppliers.length? `
+      <div style="margin-top:12px;">
+        ${suppliers.map(g=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border-soft);"><span>${esc(g)}</span><b style="font-family:var(--font-mono)">${R(s.vatBySupplier[g])}</b></div>`).join("")}
+      </div>
+      <details style="margin-top:10px;"><summary style="cursor:pointer;font-size:13px;">Show the ${s.vatOrders.length} contributing order${s.vatOrders.length===1?"":"s"}</summary>
+        <div class="table-wrap" style="margin-top:8px;"><table>
+          <thead><tr><th>Order No</th><th>Supplier</th><th>Product</th><th class="num">Supplier cost (ex VAT)</th><th class="num">VAT</th></tr></thead>
+          <tbody>${s.vatOrders.map(o=>`<tr><td>${esc(o.orderNo||"—")}</td><td>${esc(supplierGroup(o))}</td><td>${esc(o.product||"—")}</td><td class="num">${R(o.costSupplier)}</td><td class="num">${R(orderVat(o))}</td></tr>`).join("")}
+          <tr class="total-row"><td colspan="4">TOTAL</td><td class="num">${R(s.vatToChris)}</td></tr></tbody>
+        </table></div>
+      </details>` : ""}
+    </div>`;
+}
 function renderSettlement(){
   pageHeader("Payments & Settlement");
   const s = settlementForMonth(selectedMonth);
   const ledger = partnerLedger();
   const collector = DB.meta.centralCollector;
+  const missingVat = vatOn()? ordersMissingVat(ordersForMonth(selectedMonth)) : [];
   document.getElementById("content").innerHTML = `
     ${monthTabsHTML()}
+    ${missingVat.length? `<div class="banner" style="display:flex;justify-content:space-between;align-items:center;gap:12px;"><span><b>${missingVat.length} order${missingVat.length===1?"":"s"}</b> ha${missingVat.length===1?"s":"ve"} a supplier cost but no VAT setting in ${selectedMonth} — no VAT is being set aside for ${missingVat.length===1?"it":"them"}.</span><button class="btn btn-secondary btn-sm" onclick="document.getElementById('vatBulkTool').scrollIntoView({behavior:'smooth'})">Fix in bulk ↓</button></div>`:""}
     <div class="banner blue">
       <b>How this works:</b> EFT, Yoco and Ikhoka payments land with <b>${esc(collector)}</b> (the central account).
       Payflex payouts go straight to <b>Chris</b>. Chris also pays the suppliers directly (PUMA, others), so before
@@ -1604,6 +1914,8 @@ function renderSettlement(){
       <button class="btn btn-secondary btn-sm" onclick="exportBusinessOverviewCSV()">⇩ Full year overview (CSV)</button>
       <button class="btn btn-primary btn-sm" onclick="exportBusinessOverviewPDF()">🖨 Full year overview (PDF)</button>
     </div>
+
+    ${vatCardHTML(s)}
 
     <div class="grid grid-3">
       <div class="card">
@@ -1631,12 +1943,19 @@ function renderSettlement(){
         <span style="font-weight:700;">${s.payflexNet>=0? "Surplus Chris is left holding" : "Shortfall — send Chris extra to cover the suppliers"}</span>
         <b style="font-family:var(--font-mono);font-size:16px;color:${s.payflexNet>=0?'var(--green)':'var(--red)'}">${R(Math.abs(s.payflexNet))}</b>
       </div>
+      ${vatOn()? `
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border-soft);margin-top:10px;"><span>Plus: VAT on supplier costs quoted without VAT</span><b style="font-family:var(--font-mono)">+ ${R(s.vatToChris)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0 0;border-top:1px solid var(--border);">
+        <span style="font-weight:700;">${s.transferToChris<0? "Total Chris owes the business" : "Total to send Chris"}</span>
+        <b style="font-family:var(--font-mono);font-size:16px;color:${s.transferToChris<0?'var(--red)':'var(--text)'}">${R(Math.abs(s.transferToChris))}</b>
+      </div>`:""}
     </div>
 
     <div class="section-head"><h2>Step 2 — This month's profit split</h2><span class="hint">Same numbers as the Distribution page — Chris isn't part of this, see Step 1</span></div>
-    <div class="grid grid-3">
+    <div class="grid grid-4">
       <div class="card"><div class="stat-label">Net profit</div><div class="stat-value">${R(s.netProfit)}</div></div>
-      <div class="card"><div class="stat-label">Marketing reserve (${pct(DB.meta.adReservePct)})</div><div class="stat-value">${R(s.adReserve)}</div></div>
+      <div class="card"><div class="stat-label">VAT (to Chris)</div><div class="stat-value">${R(s.vatTotal)}</div><div class="stat-sub">Profit after VAT ${R(s.profitAfterVat)}</div></div>
+      <div class="card"><div class="stat-label">Marketing reserve (${pct(DB.meta.adReservePct)})</div><div class="stat-value">${R(s.adReserve)}</div><div class="stat-sub">of profit after VAT</div></div>
       <div class="card"><div class="stat-label">Distributable</div><div class="stat-value">${R(s.distributable)}</div></div>
     </div>
 
@@ -1648,7 +1967,7 @@ function renderSettlement(){
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border-soft);">
         <div><b>${s.transferToChris<0? "Chris owes the business" : "Send Chris"}</b>
-          <div class="hint" style="font-size:12px;">Not a profit share — purely covering the supplier/Payflex gap this month ${DB.meta.chrisFrontsSuppliers?`(suppliers owed: ${R(s.supplierOwedToChris)}, Payflex held: ${R(s.payflexIn)})`:""}</div>
+          <div class="hint" style="font-size:12px;">Not a profit share — covering the supplier/Payflex gap this month ${DB.meta.chrisFrontsSuppliers?`(suppliers owed: ${R(s.supplierOwedToChris)}, Payflex held: ${R(s.payflexIn)})`:""}${vatOn()? ` plus ${R(s.vatToChris)} VAT on supplier costs`:""}</div>
         </div>
         <b style="font-family:var(--font-mono);font-size:16px;color:${s.transferToChris<0?'var(--red)':'var(--text)'}">${s.transferToChris<0? `owes ${R(Math.abs(s.transferToChris))}` : R(s.transferToChris)}</b>
       </div>
@@ -1659,6 +1978,8 @@ function renderSettlement(){
         </div>`).join("")}
     </div>
     <p class="hint" style="margin-top:10px;">This assumes Chris is the one who pays suppliers (PUMA/others) directly and every order is tagged with how the customer paid. Tag payment method when logging or importing an order — untagged orders are treated as ${esc(collector)}-collected by default.</p>
+
+    ${vatBulkToolHTML()}
 
     <div class="section-head"><h2>Partner payouts</h2><span class="hint">Actual money transferred — separate from Orders and Transactions. Skip a month and it just carries forward.</span></div>
     <div class="banner blue">This tracks what's <b>actually been paid</b> against what's been earned overall (all months combined), not just ${selectedMonth}. Log a payment whenever you actually transfer money to someone — the balance below updates automatically and never resets on its own.</div>
@@ -1727,7 +2048,7 @@ function renderDistribution(){
       <div class="card"><div class="stat-label">Distributed to shareholders</div><div class="stat-value">${R(y.distributable)}</div></div>
     </div>
     <div class="section-head"><h2>How the split works</h2></div>
-    <div class="banner blue">Each month: <b>Net Profit</b> = Gross Profit − Expenses. <b>${pct(DB.meta.adReservePct)}</b> is set aside for marketing. What's left splits between the two shareholders — ${DB.meta.partners.map(p=>`<b>${esc(p)} ${pct(DB.meta.splitPercents[p]||0)}</b>`).join(" and ")}. Chris stepped down as a shareholder — he's no longer part of this split. He still pays suppliers directly and collects Payflex, tracked as its own running settlement below (and on Payments & Settlement).</div>
+    <div class="banner blue">Each month: <b>Net Profit</b> = Gross Profit − Expenses.${vatOn()? ` <b>VAT</b> on supplier costs that were quoted without VAT (${pct(vatRate())}) is taken off the top and sent to Chris.`:""} <b>${pct(DB.meta.adReservePct)}</b> of ${vatOn()? "the profit after VAT":"net profit"} is set aside for marketing. What's left splits between the two shareholders — ${DB.meta.partners.map(p=>`<b>${esc(p)} ${pct(DB.meta.splitPercents[p]||0)}</b>`).join(" and ")}. Chris stepped down as a shareholder — he's no longer part of this split. He still pays suppliers directly and collects Payflex, tracked as its own running settlement below (and on Payments & Settlement).</div>
 
     <div class="section-head"><h2>Expenses by category — full year</h2><span class="hint">${R(y.totalExpenses)} total · this is actual spend, not the marketing reserve above</span></div>
     <div class="card card-lg">
@@ -1736,19 +2057,20 @@ function renderDistribution(){
 
     <div class="table-wrap" style="margin-top:8px;">
       <table>
-        <thead><tr><th>Month</th><th class="num">Net Profit</th><th class="num">Marketing Reserve</th><th class="num">Distributable</th>${DB.meta.partners.map(p=>`<th class="num">${esc(p)}</th>`).join("")}<th class="num">Chris (settlement)</th></tr></thead>
+        <thead><tr><th>Month</th><th class="num">Net Profit</th><th class="num">VAT (to Chris)</th><th class="num">Marketing Reserve</th><th class="num">Distributable</th>${DB.meta.partners.map(p=>`<th class="num">${esc(p)}</th>`).join("")}<th class="num">Chris (settlement)</th></tr></thead>
         <tbody>
           ${MONTHS.map(m=>{ const f=monthFigures(m); const s=settlementForMonth(m); return `
             <tr>
               <td>${m}</td>
               <td class="num">${R(f.netProfit)}</td>
+              <td class="num">${R(f.vatTotal)}</td>
               <td class="num">${R(f.adReserve)}</td>
               <td class="num">${R(f.distributable)}</td>
               ${DB.meta.partners.map(p=>`<td class="num">${R(f.split[p])}</td>`).join("")}
               <td class="num" style="color:${s.transferToChris<0?'var(--red)':'inherit'}">${s.transferToChris<0? `(${R(Math.abs(s.transferToChris))})` : R(s.transferToChris)}</td>
             </tr>`;}).join("")}
           <tr class="total-row">
-            <td>FULL YEAR</td><td class="num">${R(y.netProfit)}</td><td class="num">${R(y.adReserve)}</td>
+            <td>FULL YEAR</td><td class="num">${R(y.netProfit)}</td><td class="num">${R(y.vatTotal)}</td><td class="num">${R(y.adReserve)}</td>
             <td class="num">${R(y.distributable)}</td>
             ${DB.meta.partners.map(p=>`<td class="num">${R(y.split[p])}</td>`).join("")}
             <td class="num" style="color:${y.chrisSettlement<0?'var(--red)':'inherit'}">${y.chrisSettlement<0? `(${R(Math.abs(y.chrisSettlement))})` : R(y.chrisSettlement)}</td>
@@ -1756,7 +2078,7 @@ function renderDistribution(){
         </tbody>
       </table>
     </div>
-    <p class="hint" style="margin-top:8px;">Chris's column is money still owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round. Full detail on Payments & Settlement.</p>
+    <p class="hint" style="margin-top:8px;">Chris's column is money still owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round${vatOn()? ", and includes the VAT shown in the VAT column":""}. Full detail on Payments & Settlement.</p>
 
     <div class="section-head"><h2>Gym ticket sales — Chris's own income</h2><span class="hint">Pack Life Gym SOMA Inner Balance passes — not part of the PLS profit split</span></div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
@@ -2218,7 +2540,9 @@ function renderSettings(){
         <p style="font-size:12.5px;color:var(--text-secondary);font-family:var(--font-mono);white-space:pre-wrap;">partners: ${JSON.stringify(DB.meta.partners)}
 splitPercents: ${JSON.stringify(DB.meta.splitPercents)}
 adReservePct: ${DB.meta.adReservePct}
-chrisRemovedFromSplit: ${!!DB.meta.chrisRemovedFromSplit}</p>
+chrisRemovedFromSplit: ${!!DB.meta.chrisRemovedFromSplit}
+vatEnabled: ${vatOn()} · vatRate: ${vatRate()}
+vatSupplierDefaults: ${JSON.stringify(vatDefaults())}</p>
       </div>
 
       <div class="card card-lg">
@@ -2244,6 +2568,35 @@ chrisRemovedFromSplit: ${!!DB.meta.chrisRemovedFromSplit}</p>
           </div>
         </div>
         <button class="btn btn-primary btn-sm" onclick="saveSettlementSettings()">Save</button>
+      </div>
+
+      <div class="card card-lg" style="grid-column:1/-1;">
+        <div class="stat-label" style="margin-bottom:12px;">VAT on supplier costs</div>
+        <p style="font-size:13px;color:var(--text-secondary);">Some suppliers quote prices <b>without VAT</b>. Chris pays the supplier, so that VAT is set aside from sales and sent to him, and comes out of the profit pool before the marketing reserve and split. Each order is flagged individually; the supplier defaults below only pre-fill the choice when you enter a supplier cost and are never applied to existing orders.</p>
+        <div class="field-row">
+          <div class="field"><label>Track VAT on supplier costs?</label>
+            <select id="vatEnabled"><option value="true" ${vatOn()?"selected":""}>Yes</option><option value="false" ${!vatOn()?"selected":""}>No</option></select>
+          </div>
+          <div class="field"><label>VAT rate %</label><input type="number" id="vatRatePct" min="0" max="100" step="0.1" value="${+(vatRate()*100).toFixed(2)}"></div>
+        </div>
+        <div class="field"><label>Supplier defaults (pre-fill only)</label>
+          <div id="vatDefaultsList" style="display:flex;flex-direction:column;gap:6px;">
+            ${Object.keys(vatDefaults()).length? Object.keys(vatDefaults()).map(sup=>`
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="min-width:160px;">${esc(sup)}</span>
+                <select class="vatDefaultSel" data-supplier="${esc(sup)}" style="border:1px solid var(--border);border-radius:6px;padding:4px 6px;">
+                  <option value="excl" ${vatDefaults()[sup]==="excl"?"selected":""}>Excludes VAT</option>
+                  <option value="incl" ${vatDefaults()[sup]==="incl"?"selected":""}>Includes VAT</option>
+                  <option value="__remove">Remove default</option>
+                </select>
+              </div>`).join("") : `<span class="hint">No supplier defaults yet — they're added as you choose Excludes/Includes for a supplier.</span>`}
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><input type="text" id="vatNewSupplier" placeholder="Add a supplier, e.g. Supplements supplier"></div>
+          <div class="field"><select id="vatNewChoice"><option value="excl">Excludes VAT</option><option value="incl">Includes VAT</option></select></div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveVatSettings()">Save</button>
       </div>
 
       <div class="card card-lg" style="grid-column:1/-1;">
@@ -2302,6 +2655,20 @@ function saveSettlementSettings(){
   DB.meta.centralCollector = document.getElementById("centralCollector").value;
   DB.meta.chrisFrontsSuppliers = document.getElementById("chrisFronts").value==="true";
   saveDB(true); render();
+}
+function saveVatSettings(){
+  const ratePct = parseFloat(document.getElementById("vatRatePct").value);
+  if(isNaN(ratePct) || ratePct<0 || ratePct>100){ toast("Enter a VAT rate between 0 and 100"); return; }
+  DB.meta.vatEnabled = document.getElementById("vatEnabled").value==="true";
+  DB.meta.vatRate = ratePct/100;
+  const defaults = {};
+  document.querySelectorAll(".vatDefaultSel").forEach(sel=>{
+    if(sel.value==="excl"||sel.value==="incl") defaults[sel.dataset.supplier] = sel.value;
+  });
+  DB.meta.vatSupplierDefaults = defaults;
+  const newSup = document.getElementById("vatNewSupplier").value.trim();
+  if(newSup) setVatDefault(newSup, document.getElementById("vatNewChoice").value);
+  saveDB(true); render(); toast("VAT settings saved");
 }
 function addCategory(){
   const v = document.getElementById("newCat").value.trim();
@@ -2372,7 +2739,7 @@ function openOrderForm(editId){
     </div>
     <div class="field-row">
       <div class="field"><label>Supplier order no. <span style="font-weight:400;color:var(--text-tertiary);">(PUMA's own order/PO number)</span></label><input id="f_supplierOrderNo" value="${esc(o?.supplierOrderNo||'')}"></div>
-      <div class="field"><label>Supplier / brand</label><input id="f_supplier" value="${esc(o?.supplier||'')}"></div>
+      <div class="field"><label>Supplier / brand</label><input id="f_supplier" value="${esc(o?.supplier||'')}" oninput="prefillOrderVat()"></div>
     </div>
     <div class="field"><label>Customer</label><input id="f_customer" value="${esc(o?.customer||'')}"></div>
     <div class="field"><label>Product</label><input id="f_product" value="${esc(o?.product||'')}"></div>
@@ -2388,12 +2755,25 @@ function openOrderForm(editId){
       <div class="field"><label>Cost to client (R) — full line total</label><input id="f_costC" type="number" step="0.01" value="${o?.costToClient??''}"></div>
       <div class="field"><label>Cost from supplier (R)</label><input id="f_costS" type="number" step="0.01" value="${o?.costSupplier??''}"></div>
     </div>
+    <div class="field"><label>Supplier cost includes VAT?</label>
+      <select id="f_costVat" data-new="${o?'':'1'}" onchange="this.dataset.touched='1'">
+        <option value="incl" ${o && vatChoiceOf(o)==="incl"?"selected":""}>Includes VAT</option>
+        <option value="excl" ${o && vatChoiceOf(o)==="excl"?"selected":""}>Excludes VAT (VAT is added on top and sent to Chris)</option>
+        <option value="" ${!o || !vatChoiceOf(o)?"selected":""}>Not set</option>
+      </select>
+    </div>
     <div class="field"><label>Paid via</label><select id="f_payment">${PAYMENT_METHODS.map(p=>`<option ${o?.paymentMethod===p?"selected":""}>${p}</option>`).join("")}</select></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="submitOrderForm(${o? `'${o.id}'` : 'null'})">${o? "Save changes":"Save order"}</button>
     </div>
   `);
+}
+// New orders only: pre-fill the VAT choice from the supplier's saved default until the user picks one themselves.
+function prefillOrderVat(){
+  const sel = document.getElementById("f_costVat");
+  if(!sel || sel.dataset.new!=="1" || sel.dataset.touched==="1") return;
+  sel.value = vatDefaultFor(val("f_supplier"));
 }
 function autoCalcOrderTotal(){
   const qty = parseInt(val('f_qty'))||1;
@@ -2409,12 +2789,16 @@ function submitOrderForm(editId){
     qty:parseInt(val('f_qty'))||1, unitPrice:parseFloat(val('f_unitPrice'))||0,
     costToClient:parseFloat(val('f_costC'))||0, costSupplier:parseFloat(val('f_costS'))||0
   };
-  if(editId){
-    const existing = DB.orders.find(o=>o.id===editId);
-    if(existing) Object.assign(existing, fields, {month});
+  const vat = val('f_costVat');
+  const existing = editId? DB.orders.find(o=>o.id===editId) : null;
+  const vatChanged = existing? vatChoiceOf(existing)!==vat : true;
+  if(existing){
+    Object.assign(existing, fields, {month});
+    if(vat) existing.costSupplierVat = vat; else delete existing.costSupplierVat;
   } else {
-    DB.orders.push({ id:uid(), month, ...fields, source:"manual", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString() });
+    DB.orders.push({ id:uid(), month, ...fields, ...(vat? {costSupplierVat:vat} : {}), source:"manual", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString() });
   }
+  if(vat && vatChanged && fields.supplier.trim() && vat!==vatDefaultFor(fields.supplier)) setVatDefault(fields.supplier, vat);
   closeModal(); saveDB(true); render();
 }
 
