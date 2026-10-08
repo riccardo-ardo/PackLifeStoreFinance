@@ -420,7 +420,7 @@ const emptyDB = () => ({
   meta:{ categories:[...DEFAULT_CATEGORIES], adReservePct:0.20, partners:[...PARTNERS], splitPercents:{Riccardo:0.40, Anna:0.40}, updatedAt:null,
          centralCollector:"Riccardo", chrisFrontsSuppliers:true, docFolders:["General"],
          vatEnabled:true, vatRate:0.15, vatSupplierDefaults:{PUMA:"excl"} },
-  orders:[], transactions:[], documents:[], ticketSales:[], reviewQueue:[], skuMap:[], payouts:[]
+  orders:[], transactions:[], documents:[], ticketSales:[], reviewQueue:[], skuMap:[], payouts:[], costList:[]
 });
 
 /* ---------------- persistence layer ---------------- */
@@ -779,6 +779,41 @@ function orderVat(o){
 }
 function ordersMissingVat(ords){
   return ords.filter(o=>(Number(o.costSupplier)||0)>0 && !vatChoiceOf(o));
+}
+
+/* ---------------- Supplier cost list ----------------
+   Saved per-unit supplier costs (supplements etc.). When an order is added — by hand or by import — and its SKU (or,
+   for items without a SKU, its product name) is on the list, the supplier, supplier cost (x qty) and VAT setting are
+   pulled in automatically. Costs are stored per unit; c.vat says whether that price excludes or includes VAT. */
+function costListItems(){ return Array.isArray(DB.costList)? DB.costList : []; }
+function findCostListItem(sku, product){
+  const items = costListItems();
+  const s = (sku||"").trim().toLowerCase();
+  if(s){
+    const hit = items.find(c=>(c.sku||"").trim().toLowerCase()===s);
+    if(hit) return hit;
+  }
+  // items saved without a SKU match on product name; imported orders may add a " (variant)" suffix
+  const pn = (product||"").trim().toLowerCase();
+  if(pn){
+    return items.find(c=>{
+      const n = (c.name||"").trim().toLowerCase();
+      return !(c.sku||"").trim() && n && (pn===n || pn.startsWith(n+" ("));
+    }) || null;
+  }
+  return null;
+}
+// Fills supplier, supplier cost (unit cost x qty) and VAT setting from the cost list. Leaves orders that already have a
+// cost alone unless force is set. Returns true when something was applied.
+function applyCostListToOrder(o, force){
+  if(!force && (Number(o.costSupplier)||0)>0) return false;
+  if(o.product==="Shipping") return false;
+  const c = findCostListItem(o.sku, o.product);
+  if(!c || !(Number(c.cost)>0)) return false;
+  o.costSupplier = round2(Number(c.cost) * (Number(o.qty)||1));
+  if(c.supplier && !(o.supplier||"").trim()) o.supplier = c.supplier;
+  if(c.vat==="excl" || c.vat==="incl") o.costSupplierVat = c.vat;
+  return true;
 }
 
 /* ---------------- computed figures ---------------- */
@@ -1335,6 +1370,28 @@ function renderSuppliers(){
       </div>
     </div>
 
+    <div class="section-head" id="costListSection"><h2>Supplier cost list</h2><span class="hint">Saved costs that pull into new orders automatically</span></div>
+    <div class="card card-lg">
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:0;">Save what a supplier charges you per unit (supplements, accessories — anything not on a PUMA invoice). When you add an order by hand, or import orders from Wix, any item whose <b>SKU</b> (or product name, if it has no SKU) is on this list gets its <b>supplier</b>, <b>supplier cost</b> (× quantity) and <b>VAT setting</b> filled in for you. You can still change them on the order. Costs here are <b>per unit</b>.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;">
+        <input type="search" placeholder="Search SKU, product or supplier…" value="${esc(costListFilter)}" oninput="filterCostList(this.value)" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;min-width:240px;">
+        <span class="hint" id="costListCount">${costListItems().length} item${costListItems().length===1?"":"s"}</span>
+        <div style="margin-left:auto;display:flex;flex-wrap:wrap;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="applyCostListToExisting()">Fill costs on existing orders</button>
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('costListFile').click()">⇧ Import price list</button>
+          <input type="file" id="costListFile" accept=".csv,.xlsx,.xls" class="hidden">
+          <button class="btn btn-primary btn-sm" onclick="openCostListForm(null)">+ Add item</button>
+        </div>
+      </div>
+      <div id="costListImportHost"></div>
+      <div class="table-wrap" style="max-height:420px;overflow:auto;">
+        <table>
+          <thead><tr><th>SKU</th><th>Product</th><th>Supplier</th><th class="num">Cost (each)</th><th>VAT</th><th></th></tr></thead>
+          <tbody id="costListBody">${costListRowsHTML()}</tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="section-head"><h2>SKU mapping</h2><span class="hint">When a supplier's SKU doesn't look like ours</span></div>
     <div class="card card-lg">
       <p style="font-size:13px;color:var(--text-secondary);margin-top:0;">
@@ -1366,6 +1423,154 @@ function renderSuppliers(){
     </div>
   `;
   document.getElementById("supplierFile").onchange = e=>{ if(e.target.files[0]) handleSupplierFile(e.target.files[0]); };
+  document.getElementById("costListFile").onchange = e=>{ if(e.target.files[0]) handleCostListFile(e.target.files[0]); e.target.value=""; };
+}
+
+/* ---------- Supplier cost list: table, add/edit, import, bulk fill ---------- */
+let costListFilter = "";
+function costListRowsHTML(){
+  const q = costListFilter.trim().toLowerCase();
+  const items = costListItems().filter(c=>!q || [c.sku,c.name,c.supplier].some(v=>(v||"").toLowerCase().includes(q)))
+    .sort((a,b)=>(a.supplier||"").localeCompare(b.supplier||"") || (a.name||"").localeCompare(b.name||""));
+  if(!items.length) return `<tr><td colspan="6"><div class="empty-state" style="padding:20px;">${costListItems().length? "Nothing matches that search" : "No costs saved yet — add an item or import a price list"}</div></td></tr>`;
+  return items.map(c=>`
+    <tr>
+      <td>${esc(c.sku||"—")}</td>
+      <td>${esc(c.name||"—")}</td>
+      <td>${esc(c.supplier||"—")}</td>
+      <td class="num">${R(c.cost)}</td>
+      <td>${esc(VAT_LABELS[(c.vat==="excl"||c.vat==="incl")? c.vat : ""])}</td>
+      <td class="row-actions">
+        <button class="btn btn-secondary btn-sm" onclick="openCostListForm('${c.id}')">Edit</button>
+        <button class="icon-btn" onclick="deleteCostListItem('${c.id}')">✕</button>
+      </td>
+    </tr>`).join("");
+}
+function filterCostList(v){
+  costListFilter = v;
+  const body = document.getElementById("costListBody");
+  if(body) body.innerHTML = costListRowsHTML();
+}
+function openCostListForm(id){
+  const c = id? costListItems().find(x=>x.id===id) : null;
+  openModal(`
+    <h3>${c? "Edit cost list item":"Add to cost list"}</h3><p class="sub">The cost is what the supplier charges you <b>per unit</b>. Orders with this SKU (or this product name, if there's no SKU) pull it in automatically.</p>
+    <div class="field-row">
+      <div class="field"><label>SKU</label><input id="cl_sku" value="${esc(c?.sku||'')}"></div>
+      <div class="field"><label>Supplier</label><input id="cl_supplier" value="${esc(c?.supplier||'')}" placeholder="e.g. DS International"></div>
+    </div>
+    <div class="field"><label>Product name</label><input id="cl_name" value="${esc(c?.name||'')}"></div>
+    <div class="field-row">
+      <div class="field"><label>Cost per unit (R)</label><input id="cl_cost" type="number" step="0.01" value="${c?.cost??''}"></div>
+      <div class="field"><label>Is that price…</label>
+        <select id="cl_vat">
+          <option value="excl" ${(!c || c.vat==="excl")?"selected":""}>Excluding VAT (VAT is added on top and sent to Chris)</option>
+          <option value="incl" ${c?.vat==="incl"?"selected":""}>Including VAT</option>
+          <option value="" ${c && !c.vat?"selected":""}>Not set</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCostListItem(${c? `'${c.id}'` : 'null'})">${c? "Save changes":"Add to list"}</button>
+    </div>
+  `);
+}
+function upsertCostListItem(item){
+  // one entry per SKU (or per product name when there's no SKU)
+  const sku = (item.sku||"").trim().toLowerCase(), name = (item.name||"").trim().toLowerCase();
+  const existing = costListItems().find(c=>sku? (c.sku||"").trim().toLowerCase()===sku : (!(c.sku||"").trim() && (c.name||"").trim().toLowerCase()===name));
+  if(existing){ Object.assign(existing, item); return "updated"; }
+  DB.costList.push({id:uid(), ...item}); return "added";
+}
+function saveCostListItem(editId){
+  const item = {sku:val("cl_sku").trim(), name:val("cl_name").trim(), supplier:val("cl_supplier").trim(), cost:round2(parseFloat(val("cl_cost"))), vat:val("cl_vat")};
+  if(!item.sku && !item.name){ toast("Enter a SKU or a product name"); return; }
+  if(!(item.cost>0)){ toast("Enter the cost per unit"); return; }
+  if(!DB.costList) DB.costList = [];
+  if(editId){
+    const c = DB.costList.find(x=>x.id===editId);
+    if(c) Object.assign(c, item);
+  } else upsertCostListItem(item);
+  if(item.supplier && (item.vat==="excl"||item.vat==="incl") && !vatDefaultFor(item.supplier)) setVatDefault(item.supplier, item.vat);
+  closeModal(); saveDB(true); render();
+}
+function deleteCostListItem(id){
+  const c = costListItems().find(x=>x.id===id);
+  if(!c || !confirm(`Remove "${c.name||c.sku}" from the cost list? Orders already filled in are not changed.`)) return;
+  DB.costList = DB.costList.filter(x=>x.id!==id);
+  saveDB(true); render();
+}
+// Explicit, one-off action: fill supplier cost on orders that have none and whose SKU/product is on the list.
+function applyCostListToExisting(){
+  const targets = DB.orders.filter(o=>!(Number(o.costSupplier)>0) && o.product!=="Shipping" && findCostListItem(o.sku, o.product));
+  if(!targets.length){ toast("No orders without a supplier cost match the cost list"); return; }
+  if(!confirm(`Fill in supplier cost, supplier and VAT setting on ${targets.length} order${targets.length===1?"":"s"} that have no supplier cost yet? Orders that already have a cost are left alone.`)) return;
+  targets.forEach(o=>applyCostListToOrder(o));
+  saveDB(true); render();
+  toast(`Filled supplier cost on ${targets.length} order${targets.length===1?"":"s"}`);
+}
+let costListParsed = {headers:[], rows:[], map:{}};
+function handleCostListFile(file){
+  const name = file.name.toLowerCase();
+  const done = (headers, rows)=>startCostListMapper(headers, rows);
+  if(name.endsWith(".csv")){
+    Papa.parse(file,{header:true,skipEmptyLines:true,complete:res=>done(res.meta.fields, res.data)});
+  } else {
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const wb = XLSX.read(e.target.result,{type:"array"});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws,{defval:""});
+      done(Object.keys(json[0]||{}), json);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+function startCostListMapper(headers, rows){
+  const map = {};
+  headers.forEach(h=>{
+    const l = String(h).toLowerCase();
+    if(!map.sku && /sku|item no|article/.test(l)) map.sku = h;
+    if(!map.name && /product|name|description/.test(l)) map.name = h;
+    if(!map.cost && /w\/s|wholesale|cost|net price|ex vat/.test(l)) map.cost = h;
+  });
+  costListParsed = {headers, rows, map};
+  const sel = key=>`<select onchange="costListParsed.map['${key}']=this.value"><option value="">— not in file —</option>${headers.map(h=>`<option value="${esc(h)}" ${map[key]===h?"selected":""}>${esc(h)}</option>`).join("")}</select>`;
+  document.getElementById("costListImportHost").innerHTML = `
+    <div style="margin:6px 0 14px;padding:12px;border:1px solid var(--border);border-radius:10px;">
+      <div class="stat-label">Match the columns (${rows.length} rows)</div>
+      <div class="mapper-grid">
+        <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">SKU</span>${sel("sku")}</div>
+        <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">Product name</span>${sel("name")}</div>
+        <div class="mapper-row"><span style="width:120px;flex:0 0 120px;color:var(--text-secondary);">Cost per unit</span>${sel("cost")}</div>
+      </div>
+      <div class="field-row" style="margin-top:8px;">
+        <div class="field"><label>Supplier for these</label><input id="cl_imp_supplier" placeholder="e.g. DS International"></div>
+        <div class="field"><label>Prices are…</label><select id="cl_imp_vat"><option value="excl">Excluding VAT</option><option value="incl">Including VAT</option><option value="">Not set</option></select></div>
+      </div>
+      <p class="hint" style="margin:4px 0 10px;">Tip: a supplier's full price list can be huge — only the items you actually sell need to be on here. Rows with the same SKU update the existing entry instead of adding a duplicate. Delete anything you don't need from the table afterwards.</p>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('costListImportHost').innerHTML=''">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="confirmCostListImport()">Import ${rows.length} rows</button>
+      </div>
+    </div>`;
+}
+function confirmCostListImport(){
+  const {rows, map} = costListParsed;
+  if(!map.cost || (!map.sku && !map.name)){ toast("Match the Cost column and at least SKU or Product name"); return; }
+  const supplier = val("cl_imp_supplier").trim(), vat = val("cl_imp_vat");
+  let added=0, updated=0;
+  rows.forEach(r=>{
+    const cost = round2(parseFloat(String(r[map.cost]||"0").replace(/[^0-9.\-]/g,"")));
+    const item = {sku: map.sku? String(r[map.sku]||"").trim() : "", name: map.name? String(r[map.name]||"").trim() : "", supplier, cost, vat};
+    if((!item.sku && !item.name) || !(cost>0)) return;
+    if(upsertCostListItem(item)==="added") added++; else updated++;
+  });
+  if(supplier && (vat==="excl"||vat==="incl") && !vatDefaultFor(supplier)) setVatDefault(supplier, vat);
+  document.getElementById("costListImportHost").innerHTML = "";
+  saveDB(true); render();
+  toast(`Cost list: ${added} added, ${updated} updated`);
 }
 function addSkuMapping(){
   const supplierSku = val("map_supplierSku").trim();
@@ -1508,6 +1713,26 @@ function bulkDelete(collection){
   ids.clear();
   saveDB(true); render();
 }
+function setOrderVat(id, v){
+  const o = DB.orders.find(x=>x.id===id);
+  if(!o) return;
+  const choice = (v==="excl"||v==="incl")? v : "";
+  if(choice) o.costSupplierVat = choice; else delete o.costSupplierVat;
+  if(choice && (o.supplier||"").trim() && choice!==vatDefaultFor(o.supplier)) setVatDefault(o.supplier, choice);
+  saveDB(true); render();
+}
+function bulkSetOrderVat(v){
+  if(!v) return;
+  const choice = (v==="excl"||v==="incl")? v : "";
+  const ids = selection.orders;
+  if(!ids.size) return;
+  DB.orders.forEach(o=>{
+    if(!ids.has(o.id)) return;
+    if(choice) o.costSupplierVat = choice; else delete o.costSupplierVat;
+  });
+  saveDB(true); render();
+  toast(`${ids.size} order${ids.size===1?"":"s"} set to "${VAT_LABELS[choice]}"`);
+}
 function bulkBarHTML(collection){
   const n = selection[collection].size;
   if(!n) return "";
@@ -1516,6 +1741,8 @@ function bulkBarHTML(collection){
     <span><b>${n}</b> ${label}${n===1?'':'s'} selected</span>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-secondary btn-sm" onclick="selection.${collection}.clear();render();">Clear selection</button>
+      ${collection==='orders'? `<select style="border:1px solid var(--border);border-radius:6px;padding:4px 6px;" onchange="bulkSetOrderVat(this.value);this.value='';">
+        <option value="">Set supplier VAT…</option><option value="excl">Excludes VAT</option><option value="incl">Includes VAT</option><option value="__unset">Not set</option></select>`:""}
       <button class="btn btn-danger btn-sm" onclick="bulkDelete('${collection}')">Delete selected</button>
     </div>
   </div>`;
@@ -1525,8 +1752,11 @@ function renderOrders(){
   const ords = ordersForMonth(selectedMonth);
   const totalC = ords.reduce((s,o)=>s+(+o.costToClient||0),0);
   const totalS = ords.reduce((s,o)=>s+(+o.costSupplier||0),0);
+  const totalVat = ords.reduce((s,o)=>s+orderVat(o),0);
+  const missingVat = vatOn()? ordersMissingVat(ords).length : 0;
   document.getElementById("content").innerHTML = `
     ${monthTabsHTML()}
+    ${missingVat? `<div class="banner"><span><b>${missingVat} order${missingVat===1?"":"s"}</b> ha${missingVat===1?"s":"ve"} a supplier cost but no VAT setting — pick <b>Excludes VAT</b> or <b>Includes VAT</b> in the Supplier cost VAT column. Only "Excludes VAT" orders add VAT to the Payments &amp; Settlement page.</span></div>`:""}
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;">
       <button class="btn btn-secondary btn-sm" onclick="page='upload';render();">⇧ Upload Wix export</button>
       <button class="btn btn-primary btn-sm" onclick="openOrderForm(null)">+ Add order</button>
@@ -1535,7 +1765,7 @@ function renderOrders(){
     <div class="table-wrap">
       <table>
         <thead><tr><th style="width:36px;"><input type="checkbox" ${ords.length && ords.every(o=>selection.orders.has(o.id))? "checked":""} onchange='toggleSelectAll("orders", ${JSON.stringify(ords.map(o=>o.id))}, this.checked)'></th><th>Wix Order No</th><th>Supplier Order No</th><th>Date</th><th>Customer</th><th>Product</th><th>SKU</th><th class="num">Qty</th><th class="num">Unit Price</th><th>Coupon</th><th>Supplier</th><th>Paid via</th>
-        <th class="num">Cost to Client</th><th class="num">Supplier Cost</th><th class="num">Gross Profit</th><th></th></tr></thead>
+        <th class="num">Cost to Client</th><th class="num">Supplier Cost</th><th>Supplier cost VAT</th><th class="num">Gross Profit</th><th></th></tr></thead>
         <tbody>
           ${ords.length? ords.map(o=>`
             <tr>
@@ -1553,13 +1783,21 @@ function renderOrders(){
               <td><span class="tag ${o.paymentMethod==='Payflex'?'needs':''}">${esc(o.paymentMethod||"EFT")}</span></td>
               <td class="num">${R(o.costToClient)}</td>
               <td class="num">${R(o.costSupplier)}</td>
+              <td>
+                <select style="border:1px solid var(--border);border-radius:6px;padding:3px 6px;${!vatChoiceOf(o) && (+o.costSupplier||0)>0 && vatOn()? "background:var(--amber-soft);":""}" onchange="setOrderVat('${o.id}', this.value)">
+                  <option value="excl" ${vatChoiceOf(o)==="excl"?"selected":""}>Excludes VAT</option>
+                  <option value="incl" ${vatChoiceOf(o)==="incl"?"selected":""}>Includes VAT</option>
+                  <option value="" ${!vatChoiceOf(o)?"selected":""}>Not set</option>
+                </select>
+                ${orderVat(o)>0? `<div class="hint" style="margin-top:2px;">+ ${R(orderVat(o))} VAT to Chris</div>`:""}
+              </td>
               <td class="num">${R((o.costToClient||0)-(o.costSupplier||0))}</td>
               <td class="row-actions">
                 <button class="btn btn-secondary btn-sm" onclick="openOrderForm('${o.id}')">Edit</button>
                 <button class="icon-btn" onclick="deleteRow('orders','${o.id}')">✕</button>
               </td>
-            </tr>`).join("") : `<tr><td colspan="16"><div class="empty-state"><div class="ic">▤</div>No orders logged for ${selectedMonth} yet</div></td></tr>`}
-          ${ords.length?`<tr class="total-row"><td colspan="12">TOTAL</td><td class="num">${R(totalC)}</td><td class="num">${R(totalS)}</td><td class="num">${R(totalC-totalS)}</td><td></td></tr>`:""}
+            </tr>`).join("") : `<tr><td colspan="17"><div class="empty-state"><div class="ic">▤</div>No orders logged for ${selectedMonth} yet</div></td></tr>`}
+          ${ords.length?`<tr class="total-row"><td colspan="12">TOTAL</td><td class="num">${R(totalC)}</td><td class="num">${R(totalS)}</td><td>${vatOn()? `<b>${R(totalVat)}</b> VAT to Chris`:""}</td><td class="num">${R(totalC-totalS)}</td><td></td></tr>`:""}
         </tbody>
       </table>
     </div>
@@ -2573,23 +2811,25 @@ function renderPdfOrderReview(){
   `;
 }
 function confirmPdfOrderImport(){
-  let count=0;
+  let count=0, fromList=0;
   pdfOrderRows.forEach(r=>{
     if(!r.product && !r.sku && !r.price) return;
     const d = r.date && !isNaN(new Date(r.date)) ? r.date : new Date().toISOString();
     const month = monthOf(d) || selectedMonth;
-    DB.orders.push({
+    const o = {
       id:uid(), month, orderNo:r.orderNo||"", date:d,
       customer:r.customer||"", sku:r.sku||"", product:r.product||"", coupon:r.coupon||"",
       qty:parseInt(r.qty)||1, unitPrice:parseFloat(r.unitPrice)||0, discountPct:parseFloat(r.discountPct)||0,
       paymentMethod:r.paymentMethod||"EFT", costToClient:parseFloat(r.price)||0, costSupplier:0, supplier:"",
       source:"wix-pdf", addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()
-    });
+    };
+    if(applyCostListToOrder(o)) fromList++;
+    DB.orders.push(o);
     count++;
   });
   DB.documents.push({id:uid(), name:`Wix PDF import (${count} rows)`, type:"import-log", month:selectedMonth, category:"Wix Export", note:`Imported ${count} order rows from PDF receipts`, addedBy:currentUser||"Unknown", addedAt:new Date().toISOString()});
   document.getElementById("wixMapperHost").innerHTML="";
-  toast(`Imported ${count} orders from PDF, filed by their actual order date — double-check, then add supplier cost`);
+  toast(`Imported ${count} orders from PDF, filed by their actual order date${fromList? ` — ${fromList} got their supplier cost from the cost list` : ""} — double-check, then add any missing supplier cost`);
   saveDB(true);
   page="orders"; render();
 }
@@ -2650,7 +2890,7 @@ function startMapper(headers, rows){
   `;
 }
 function confirmWixImport(){
-  let count=0;
+  let count=0, fromList=0;
   parsedRows.forEach(row=>{
     const price = parseFloat(String(row[mapping.price]||"0").replace(/[^0-9.\-]/g,""))||0;
     const date = mapping.date? row[mapping.date] : new Date().toISOString();
@@ -2672,11 +2912,12 @@ function confirmWixImport(){
       addedBy: currentUser||"Unknown",
       addedAt: new Date().toISOString()
     };
+    if(applyCostListToOrder(o)) fromList++;
     DB.orders.push(o); count++;
   });
   DB.documents.push({id:uid(),name:`Wix export (${count} rows)`,type:"import-log",month:selectedMonth,category:"Wix Export",note:`Imported ${count} order rows`,addedBy:currentUser||"Unknown",addedAt:new Date().toISOString()});
   document.getElementById("wixMapperHost").innerHTML="";
-  toast(`Imported ${count} orders, filed by their actual order date — supplier cost still needs adding per row`);
+  toast(`Imported ${count} orders, filed by their actual order date${fromList? ` — ${fromList} got their supplier cost from the cost list` : ""} — supplier cost still needs adding on the rest`);
   saveDB(true);
   page="orders"; render();
 }
@@ -2958,18 +3199,18 @@ function openOrderForm(editId){
       <div class="field"><label>Supplier / brand</label><input id="f_supplier" value="${esc(o?.supplier||'')}" oninput="prefillOrderVat()"></div>
     </div>
     <div class="field"><label>Customer</label><input id="f_customer" value="${esc(o?.customer||'')}"></div>
-    <div class="field"><label>Product</label><input id="f_product" value="${esc(o?.product||'')}"></div>
+    <div class="field"><label>Product</label><input id="f_product" value="${esc(o?.product||'')}" oninput="prefillCostFromList()"></div>
     <div class="field-row">
-      <div class="field"><label>SKU</label><input id="f_sku" value="${esc(o?.sku||'')}"></div>
+      <div class="field"><label>SKU</label><input id="f_sku" value="${esc(o?.sku||'')}" oninput="prefillCostFromList()"></div>
       <div class="field"><label>Coupon used</label><input id="f_coupon" value="${esc(o?.coupon||'')}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Qty</label><input id="f_qty" type="number" min="1" step="1" value="${o?.qty||1}" oninput="autoCalcOrderTotal()"></div>
+      <div class="field"><label>Qty</label><input id="f_qty" type="number" min="1" step="1" value="${o?.qty||1}" oninput="autoCalcOrderTotal();prefillCostFromList()"></div>
       <div class="field"><label>Unit price (R)</label><input id="f_unitPrice" type="number" step="0.01" value="${o?.unitPrice??''}" oninput="autoCalcOrderTotal()"></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Cost to client (R) — full line total</label><input id="f_costC" type="number" step="0.01" value="${o?.costToClient??''}"></div>
-      <div class="field"><label>Cost from supplier (R)</label><input id="f_costS" type="number" step="0.01" value="${o?.costSupplier??''}"></div>
+      <div class="field"><label>Cost from supplier (R)</label><input id="f_costS" type="number" step="0.01" value="${o?.costSupplier??''}" oninput="this.dataset.auto=''"><div class="hint" id="costListHint" style="margin-top:4px;"></div></div>
     </div>
     <div class="field"><label>Supplier cost includes VAT?</label>
       <select id="f_costVat" data-new="${o?'':'1'}" onchange="this.dataset.touched='1'">
@@ -2984,6 +3225,29 @@ function openOrderForm(editId){
       <button class="btn btn-primary" onclick="submitOrderForm(${o? `'${o.id}'` : 'null'})">${o? "Save changes":"Save order"}</button>
     </div>
   `);
+}
+// Pulls supplier, cost (x qty) and VAT setting from the supplier cost list when the SKU/product is on it. Never overwrites a cost
+// the user typed — only an empty cost box or one this function filled itself.
+function prefillCostFromList(){
+  const costEl = document.getElementById("f_costS");
+  if(!costEl) return;
+  const hint = document.getElementById("costListHint");
+  const mine = costEl.dataset.auto==="1";
+  if(costEl.value!=="" && !mine) return;
+  const c = findCostListItem(val("f_sku"), val("f_product"));
+  if(!c || !(Number(c.cost)>0)){
+    if(mine){ costEl.value=""; costEl.dataset.auto=""; }
+    if(hint) hint.textContent="";
+    return;
+  }
+  const qty = parseInt(val("f_qty"))||1;
+  costEl.value = round2(Number(c.cost)*qty);
+  costEl.dataset.auto = "1";
+  const sup = document.getElementById("f_supplier");
+  if(sup && !sup.value.trim()) sup.value = c.supplier||"";
+  const vs = document.getElementById("f_costVat");
+  if(vs && vs.dataset.touched!=="1") vs.value = (c.vat==="excl"||c.vat==="incl")? c.vat : "";
+  if(hint) hint.textContent = `From cost list: ${R(c.cost)} each${c.vat==="excl"?" (excl VAT)":c.vat==="incl"?" (incl VAT)":""}`;
 }
 // New orders only: pre-fill the VAT choice from the supplier's saved default until the user picks one themselves.
 function prefillOrderVat(){
@@ -3005,7 +3269,16 @@ function submitOrderForm(editId){
     qty:parseInt(val('f_qty'))||1, unitPrice:parseFloat(val('f_unitPrice'))||0,
     costToClient:parseFloat(val('f_costC'))||0, costSupplier:parseFloat(val('f_costS'))||0
   };
-  const vat = val('f_costVat');
+  let vat = val('f_costVat');
+  if(!fields.costSupplier){
+    // nothing typed: last chance to pull the cost from the supplier cost list
+    const tmp = {sku:fields.sku, product:fields.product, qty:fields.qty, costSupplier:0, supplier:fields.supplier};
+    if(applyCostListToOrder(tmp)){
+      fields.costSupplier = tmp.costSupplier;
+      if(!fields.supplier.trim()) fields.supplier = tmp.supplier;
+      if(!vat && tmp.costSupplierVat) vat = tmp.costSupplierVat;
+    }
+  }
   const existing = editId? DB.orders.find(o=>o.id===editId) : null;
   const vatChanged = existing? vatChoiceOf(existing)!==vat : true;
   if(existing){
