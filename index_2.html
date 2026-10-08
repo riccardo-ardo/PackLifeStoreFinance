@@ -3056,8 +3056,10 @@ vatSupplierDefaults: ${JSON.stringify(vatDefaults())}</p>
         <button class="btn btn-secondary btn-sm" onclick="reloadFromServer()">⟳ Reload from server</button>
         <button class="btn btn-secondary btn-sm" onclick="downloadBackup()">⇩ Download full backup (.json)</button>
         <button class="btn btn-secondary btn-sm" onclick="document.getElementById('importFile').click()">⇧ Import data (.json)</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('patchFile').click()">Apply a correction file…</button>
         <button class="btn btn-secondary btn-sm" onclick="doLogout()">Sign out</button>
         <input type="file" id="importFile" accept=".json" class="hidden" onchange="importBackup(this.files[0])">
+        <input type="file" id="patchFile" accept=".json" class="hidden" onchange="applyDataPatch(this.files[0]); this.value='';">
         <p class="hint" style="margin-top:10px;">Changes you make show up on this screen straight away — you don't need to wait for the sync to finish. If it says "Retrying sync…" your entry is safe here and PLS HQ will keep trying to push it to the shared copy in the background.</p>
       </div>
         <button class="btn btn-secondary btn-sm" onclick="saveDB(true)">Retry saving now</button>
@@ -3145,6 +3147,50 @@ function reloadFromServer(){
     DB = normalizeDB(snap.data()); lastRemoteStamp = DB.meta.updatedAt || null; pendingSince = null;
     render(); toast("Reloaded from server");
   }).catch(e=>{ console.error(e); toast("Couldn't reach the shared storage"); });
+}
+/* ---------- Correction files ----------
+   A small .json file that ADDS order lines and CORRECTS specific fields on existing ones. Unlike "Import data" it never
+   replaces anything: it works on the live data, shows what it will do first, skips any line that has been changed since the
+   file was made (the "expect" check), and can safely be applied twice (lines that are already there are skipped). */
+function applyDataPatch(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      const patch = JSON.parse(e.target.result);
+      if(patch.kind!=="pls-finance-patch" || !Array.isArray(patch.add||[]) || !Array.isArray(patch.update||[])) throw new Error("not a PLS HQ correction file");
+      if(!storageReady || (remoteMissing && jsonbinConfigured())){ toast("Wait until the data has loaded (and been copied across) first"); return; }
+      const same = (a,b)=> ((a==null||a==="")? (b==null||b===""||b===0) : String(a)===String(b)) || (Number(a)===Number(b) && a!=="" && b!=="" && a!=null && b!=null);
+      const have = new Set(DB.orders.map(o=>o.id));
+      const adds = (patch.add||[]).filter(o=>o && o.id && !have.has(o.id));
+      const alreadyThere = (patch.add||[]).length - adds.length;
+      const ups = []; let changedSince = 0, missing = 0;
+      (patch.update||[]).forEach(u=>{
+        const o = DB.orders.find(x=>x.id===u.id);
+        if(!o){ missing++; return; }
+        const already = Object.entries(u.set||{}).every(([k,v])=>same(o[k], v));
+        if(already) return;
+        const ok = Object.entries(u.expect||{}).every(([k,v])=>same(o[k], v));
+        if(!ok){ changedSince++; return; }
+        ups.push({o,u});
+      });
+      if(!adds.length && !ups.length){ toast("Nothing to do — this file has already been applied"+(changedSince? ` (${changedSince} lines were changed since and left alone)`:"")); return; }
+      const msg = `${patch.description? patch.description+"\n\n" : ""}This will add ${adds.length} order line${adds.length===1?"":"s"} and correct ${ups.length} existing line${ups.length===1?"":"s"}.`
+        + (alreadyThere? `\n${alreadyThere} line(s) are already there and will be skipped.` : "")
+        + (changedSince? `\n${changedSince} line(s) were edited since this file was made and will be left alone.` : "")
+        + (missing? `\n${missing} line(s) no longer exist and will be skipped.` : "")
+        + `\n\nNothing is deleted. Continue?`;
+      if(!confirm(msg)) return;
+      adds.forEach(o=>DB.orders.push(o));
+      ups.forEach(({o,u})=>{ Object.entries(u.set||{}).forEach(([k,v])=>{ o[k] = v; }); (u.unset||[]).forEach(k=>{ delete o[k]; }); });
+      saveDB(true); render();
+      toast(`Added ${adds.length} line${adds.length===1?"":"s"}, corrected ${ups.length}`);
+    }catch(err){
+      console.error(err);
+      toast("Couldn't read that file — "+(err.message||err));
+    }
+  };
+  reader.readAsText(file);
 }
 function downloadBackup(){
   const blob = new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});
