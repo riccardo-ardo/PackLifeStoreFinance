@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PLS HQ — Pack Life Store</title>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -217,6 +220,15 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 }
 .modal h3{margin:0 0 4px;font-family:var(--font-display);font-size:18px;}
 .modal p.sub{margin:0 0 18px;color:var(--text-secondary);font-size:13px;}
+#loginGate{
+  position:fixed;inset:0;background:rgba(29,29,31,.55);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;z-index:999;
+}
+.login-card{
+  background:var(--surface);border-radius:var(--radius-lg);padding:32px 30px;width:340px;
+  box-shadow:var(--shadow-lg);border:1px solid var(--border);
+}
+.login-card .field{margin-bottom:12px;}
 .field{margin-bottom:14px;}
 .field label{display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;}
 .field input:not([type="checkbox"]):not([type="radio"]),.field select,.field textarea{
@@ -333,7 +345,7 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 
     <div class="sync-box" id="syncBox">
       <div class="sync-row"><span class="dot mid" id="syncDot"></span><span id="syncText">Connecting…</span></div>
-      <div id="syncSub">JSONBin not configured</div>
+      <div id="syncSub">Reaching shared storage</div>
     </div>
   </div>
 
@@ -357,14 +369,31 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 <script>
 /* ============================================================
    PLS HQ — application script
-   Single-file app. Data lives in a JSONBin.io bin (shared by the
-   whole team). Configure CONFIG below before publishing to
-   GitHub Pages. See the accompanying SETUP.md for instructions.
+   Single-file app. Data lives in Firebase Firestore (document
+   pls_ops/finance), the same Firebase project and team logins as
+   the Hub, Daily Updates, Social Media and Contacts pages.
    ============================================================ */
 
+// Same Firebase project as the other PLS HQ pages (these web-app values are public by design — access is
+// controlled by the sign-in and the Firestore rules, not by hiding them).
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC4Jt8UK7iNWyjq417oovophYHj7dY3uWk",
+  authDomain: "pls-hq.firebaseapp.com",
+  projectId: "pls-hq",
+  storageBucket: "pls-hq.firebasestorage.app",
+  messagingSenderId: "3004819335",
+  appId: "1:3004819335:web:b6938c028697f29febd522"
+};
+const FINANCE_DOC = { collection:"pls_ops", doc:"finance" };
+/* email -> display name (matches the other pages) */
+const TEAM_EMAIL_MAP = {
+  "riccardomontali@gmail.com": "Riccardo",
+  "annamontali@lantic.net": "Anna",
+  "chris@packlifestore.com": "Chris",
+};
+// LEGACY: the old JSONBin copy. Only used once, by the "Copy my data across" button, to move the existing data
+// into Firestore. Nothing is ever written to JSONBin any more.
 const CONFIG = {
-  // 1. Create a free bin at https://jsonbin.io (see SETUP.md)
-  // 2. Paste your Bin ID and X-Master-Key below
   JSONBIN_BIN_ID: "6a71c7b6f5f4af5e29e95911",
   JSONBIN_API_KEY: "$2a$10$TckKi6ppJW2MOaBYNYg5xe.MpVd/D0bby8ovrw2uO1X5xhJ5ba94S",
   JSONBIN_BASE: "https://api.jsonbin.io/v3/b/"
@@ -385,7 +414,7 @@ let DB = null;         // in-memory copy of the whole dataset
 let currentUser = "";  // session-only identity (not persisted — see Settings)
 let page = "dashboard";
 let selectedMonth = MONTHS[new Date().getMonth()];
-let syncState = "connecting"; // connecting | ok | offline | unconfigured
+let syncState = "connecting"; // connecting | ok | saving | retrying | offline | denied | loggedout | unconfigured
 
 const emptyDB = () => ({
   meta:{ categories:[...DEFAULT_CATEGORIES], adReservePct:0.20, partners:[...PARTNERS], splitPercents:{Riccardo:0.40, Anna:0.40}, updatedAt:null,
@@ -398,6 +427,7 @@ const emptyDB = () => ({
 const jsonbinConfigured = () =>
   CONFIG.JSONBIN_BIN_ID && !CONFIG.JSONBIN_BIN_ID.startsWith("PASTE_") &&
   CONFIG.JSONBIN_API_KEY && !CONFIG.JSONBIN_API_KEY.startsWith("PASTE_");
+const firebaseConfigured = () => !!(FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith("PASTE_") && typeof firebase!=="undefined");
 
 function migrateChrisOwnershipChange(){
   // Chris stepped down as a shareholder. This runs on every load and self-heals — it never
@@ -430,76 +460,251 @@ function migrateChrisOwnershipChange(){
   }
   if(changed) saveDB(false);
 }
-async function loadDB(){
-  if(!jsonbinConfigured()){
-    syncState = "unconfigured";
-    DB = emptyDB();
-    updateSyncBox();
-    return;
-  }
-  try{
-    const res = await fetch(CONFIG.JSONBIN_BASE + CONFIG.JSONBIN_BIN_ID + "/latest", {
-      headers:{ "X-Master-Key": CONFIG.JSONBIN_API_KEY }
-    });
-    if(!res.ok) throw new Error("HTTP "+res.status);
-    const json = await res.json();
-    DB = json.record && json.record.meta ? json.record : emptyDB();
-    // backfill any new fields for older bins
-    DB.meta = Object.assign(emptyDB().meta, DB.meta||{});
-    ["orders","transactions","documents","ticketSales","reviewQueue","skuMap","payouts","costList"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
-    migrateChrisOwnershipChange();
-    syncState = "ok";
-  }catch(e){
-    console.error(e);
+// Fills in anything an older copy of the data doesn't have yet, so every page can rely on it.
+function normalizeDB(raw){
+  const d = (raw && raw.meta)? raw : emptyDB();
+  const blank = emptyDB();
+  d.meta = Object.assign(blank.meta, d.meta||{});
+  Object.keys(blank).forEach(k=>{ if(Array.isArray(blank[k]) && !Array.isArray(d[k])) d[k] = []; });
+  return d;
+}
+
+let fbApp=null, fbAuth=null, fbDb=null, fbUnsub=null;
+let storageReady = false;      // true once the first copy of the data has arrived from Firestore
+let remoteMissing = false;     // Firestore has no finance document yet (first run, before the JSONBin copy)
+let lastRemoteStamp = null;    // meta.updatedAt of the version we last saw in Firestore — saves refuse to overwrite anything newer
+let firstSnapshotResolve = null;
+const financeRef = ()=> fbDb.collection(FINANCE_DOC.collection).doc(FINANCE_DOC.doc);
+
+// Resolves once the first load attempt is done (data loaded, signed out, or not available) so the page can draw.
+function loadDB(){
+  return new Promise(resolve=>{
+    firstSnapshotResolve = resolve;
+    if(!firebaseConfigured()){
+      syncState = "unconfigured"; DB = DB || emptyDB(); updateSyncBox(); resolve(); return;
+    }
+    try{
+      if(!fbApp){
+        fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+        fbAuth = firebase.auth();
+        fbDb = firebase.firestore();
+      }
+    }catch(e){
+      console.error(e); syncState="offline"; DB = DB || emptyDB(); updateSyncBox(); resolve(); return;
+    }
     DB = DB || emptyDB();
-    syncState = "offline";
-  }
-  updateSyncBox();
+    syncState = "connecting"; updateSyncBox();
+    fbAuth.onAuthStateChanged(user=>{
+      if(user){
+        hideLoginGate();
+        const known = Object.entries(TEAM_EMAIL_MAP).find(([email])=>email.toLowerCase()===(user.email||"").toLowerCase());
+        const displayName = known? known[1] : (user.email||"").split("@")[0];
+        if(!currentUser){
+          currentUser = displayName;
+          const sel = document.getElementById("identitySelect");
+          if(sel && [...sel.options].some(o=>o.value===displayName)) sel.value = displayName;
+        }
+        attachFinanceListener();
+      } else {
+        if(fbUnsub){ fbUnsub(); fbUnsub=null; }
+        storageReady = false; syncState = "loggedout"; updateSyncBox(); showLoginGate();
+        if(firstSnapshotResolve){ firstSnapshotResolve(); firstSnapshotResolve=null; }
+      }
+    });
+  });
+}
+function attachFinanceListener(){
+  if(fbUnsub) fbUnsub();
+  syncState = "connecting"; updateSyncBox();
+  fbUnsub = financeRef().onSnapshot(snap=>{
+    if(snap.metadata.hasPendingWrites) return;          // echo of our own write
+    const firstLoad = !storageReady;
+    if(!snap.exists){
+      // Nothing in Firestore yet. Nothing can be saved until the old JSONBin data has been copied across.
+      remoteMissing = true; storageReady = true; lastRemoteStamp = null;
+      DB = normalizeDB(null); syncState = "ok"; updateSyncBox();
+      render();
+      if(firstSnapshotResolve){ firstSnapshotResolve(); firstSnapshotResolve=null; }
+      return;
+    }
+    remoteMissing = false;
+    const incoming = normalizeDB(snap.data());
+    const stamp = incoming.meta.updatedAt || null;
+    if(!firstLoad && (stamp===lastRemoteStamp || (DB && DB.meta && stamp===DB.meta.updatedAt))) return;   // nothing new, or our own save
+    DB = incoming; lastRemoteStamp = stamp; storageReady = true;
+    migrateChrisOwnershipChange();
+    syncState = "ok"; updateSyncBox();
+    if(firstLoad) render(); else refreshAfterRemoteChange();
+    if(firstSnapshotResolve){ firstSnapshotResolve(); firstSnapshotResolve=null; }
+  }, err=>{
+    console.error(err);
+    syncState = (err && err.code==="permission-denied")? "denied" : "offline"; updateSyncBox();
+    if(firstSnapshotResolve){ firstSnapshotResolve(); firstSnapshotResolve=null; }
+  });
+}
+// A teammate saved while this page is open: show their change, unless that would wipe something being typed.
+function refreshAfterRemoteChange(){
+  const a = document.activeElement, content = document.getElementById("content");
+  const typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && content && content.contains(a);
+  if(document.querySelector(".overlay") || typing){ toast("A teammate just saved changes — finish what you're doing and refresh to see them"); return; }
+  render();
 }
 
 let retryTimer=null;
 let pendingSince=null; // timestamp of the oldest change not yet confirmed saved
-async function saveDB(showToast, attempt){
-  attempt = attempt||0;
-  DB.meta.updatedAt = new Date().toISOString();
-  if(!pendingSince) pendingSince = Date.now();
-  if(!jsonbinConfigured()){
+let saveChain = Promise.resolve();
+const FIRESTORE_DOC_WARN_BYTES = 800000; // a Firestore document maxes out at 1 MiB
+function saveDB(showToast, attempt){
+  // saves run one at a time, each writing the latest state of the data
+  saveChain = saveChain.then(()=>doSaveDB(showToast, attempt||0)).catch(e=>console.error(e));
+  return saveChain;
+}
+async function doSaveDB(showToast, attempt){
+  if(!DB) return;
+  if(!firebaseConfigured() || !fbAuth){
     syncState="unconfigured"; updateSyncBox();
-    if(showToast) toast("Not saved — JSONBin isn't configured yet (see Settings)");
+    if(showToast) toast("Not saved — shared storage isn't available");
     return;
   }
+  if(!fbAuth.currentUser){ syncState="loggedout"; updateSyncBox(); showLoginGate(); if(showToast) toast("Sign in to save changes"); return; }
+  if(!storageReady){ if(showToast) toast("Still connecting — try again in a moment"); return; }
+  if(remoteMissing && jsonbinConfigured()){
+    if(showToast) toast("Copy your existing data across first (banner at the top of the page) — nothing was saved");
+    return;
+  }
+  DB.meta.updatedAt = new Date().toISOString();
+  if(!pendingSince) pendingSince = Date.now();
   syncState = attempt>0? "retrying" : "saving";
   updateSyncBox();
+  const stamp = DB.meta.updatedAt;
   try{
-    const res = await fetch(CONFIG.JSONBIN_BASE + CONFIG.JSONBIN_BIN_ID, {
-      method:"PUT",
-      headers:{ "Content-Type":"application/json", "X-Master-Key": CONFIG.JSONBIN_API_KEY },
-      body: JSON.stringify(DB)
+    const payload = JSON.parse(JSON.stringify(DB));   // drops undefined values, which Firestore rejects
+    const size = JSON.stringify(payload).length;
+    if(size > FIRESTORE_DOC_WARN_BYTES) toast("Heads up: the finance data is getting very large ("+Math.round(size/1000)+" KB of a 1000 KB limit)");
+    await fbDb.runTransaction(async tx=>{
+      const ref = financeRef();
+      const snap = await tx.get(ref);
+      const remoteStamp = snap.exists? ((snap.data().meta||{}).updatedAt || null) : null;
+      if(remoteStamp !== lastRemoteStamp){
+        const err = new Error("conflict"); err.code = "pls-conflict"; throw err;
+      }
+      tx.set(ref, payload);
     });
-    if(!res.ok) throw new Error("HTTP "+res.status);
-    syncState="ok";
-    pendingSince=null;
-    clearTimeout(retryTimer);
+    lastRemoteStamp = stamp; remoteMissing = false;
+    syncState="ok"; pendingSince=null; clearTimeout(retryTimer);
     if(showToast) toast("Saved to PLS HQ ✓");
   }catch(e){
-    console.error(e);
-    syncState="offline";
-    if(showToast) toast(attempt===0? "Couldn't reach JSONBin — your change is on this screen and will keep trying to sync" : "Still offline — will keep retrying in the background");
-    clearTimeout(retryTimer);
-    const delay = Math.min(4000*(attempt+1), 20000);
-    retryTimer = setTimeout(()=>saveDB(false, attempt+1), delay);
+    if(e && e.code==="pls-conflict"){
+      // someone else saved a newer version first — do NOT overwrite it; bring theirs in instead
+      console.warn("Save refused: the shared storage has a newer version than this screen.");
+      syncState="ok"; pendingSince=null; clearTimeout(retryTimer);
+      toast("A teammate saved at the same moment — your last change was NOT saved. The screen is updating; please redo it.");
+      try{
+        const snap = await financeRef().get({source:"server"});
+        if(snap.exists){ DB = normalizeDB(snap.data()); lastRemoteStamp = DB.meta.updatedAt || null; render(); }
+      }catch(_e){}
+    } else {
+      console.error(e);
+      syncState = (e && e.code==="permission-denied")? "denied" : "offline";
+      if(syncState==="denied"){
+        if(showToast) toast("Not allowed to save — the Firestore rules need to allow signed-in users on pls_ops");
+      } else {
+        if(showToast) toast(attempt===0? "Couldn't reach the server — your change is on this screen and will keep trying to sync" : "Still offline — will keep retrying in the background");
+        clearTimeout(retryTimer);
+        const delay = Math.min(4000*(attempt+1), 20000);
+        retryTimer = setTimeout(()=>saveDB(false, attempt+1), delay);
+      }
+    }
   }
   updateSyncBox();
 }
 
+/* ---------- one-off copy of the old JSONBin data into Firestore ---------- */
+async function migrateFromJsonbin(){
+  if(!remoteMissing){ toast("The shared storage already has finance data — nothing to copy"); return; }
+  if(!jsonbinConfigured()){ toast("The old JSONBin connection isn't set up in this file"); return; }
+  if(!confirm("Copy all finance data from the old JSONBin copy into the new shared storage? This happens once and never overwrites anything already in the shared storage.")) return;
+  try{
+    toast("Reading the old data…");
+    const res = await fetch(CONFIG.JSONBIN_BASE + CONFIG.JSONBIN_BIN_ID + "/latest", { headers:{ "X-Master-Key": CONFIG.JSONBIN_API_KEY } });
+    if(!res.ok) throw new Error("JSONBin HTTP "+res.status);
+    const json = await res.json();
+    if(!json.record || !json.record.meta || !Array.isArray(json.record.orders)) throw new Error("the old data doesn't look like PLS HQ finance data");
+    const data = normalizeDB(json.record);
+    const payload = JSON.parse(JSON.stringify(data));
+    await fbDb.runTransaction(async tx=>{
+      const ref = financeRef();
+      const snap = await tx.get(ref);
+      if(snap.exists) throw new Error("the shared storage got finance data while copying — cancelled, nothing was overwritten");
+      tx.set(ref, payload);
+    });
+    toast("Copied "+data.orders.length+" orders, "+data.transactions.length+" transactions and everything else ✓");
+    // the live listener now delivers the document and the banner disappears
+  }catch(e){
+    console.error(e);
+    toast("Couldn't copy the data: "+(e.message||e));
+  }
+}
+function migrationBannerHTML(){
+  if(!(remoteMissing && storageReady)) return "";
+  return `<div class="banner" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 16px;">
+    <span><b>Finance has moved to the shared Firebase storage.</b> There's nothing in it yet, so this screen looks empty. ${jsonbinConfigured()? "Your existing data is still safe in the old JSONBin copy — click the button to copy it across (one time only). Nothing can be saved until you do." : ""}</span>
+    ${jsonbinConfigured()? `<button class="btn btn-primary btn-sm" onclick="migrateFromJsonbin()">Copy my data across</button>` : ""}
+  </div>`;
+}
+
+/* ---------- login gate ---------- */
+function showLoginGate(){
+  let el = document.getElementById("loginGate");
+  if(!el){
+    el = document.createElement("div");
+    el.id = "loginGate";
+    el.innerHTML = `
+      <div class="login-card">
+        <div class="brand" style="margin-bottom:18px;display:flex;align-items:center;gap:10px;">
+          <div class="brand-mark">PL</div>
+          <div class="brand-text"><div class="t1" style="font-weight:700;">PLS HQ</div><div class="t2" style="font-size:12px;color:var(--text-secondary);">Pack Life Store — Finance</div></div>
+        </div>
+        <div id="loginForm">
+          <div class="field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@packlifestore.com"></div>
+          <div class="field"><label>Password</label><input type="password" id="loginPassword"></div>
+          <button class="btn btn-primary" style="width:100%;margin-top:6px;" onclick="doLogin()">Sign in</button>
+          <div id="loginError" style="color:var(--red);font-size:12px;margin-top:10px;display:none;"></div>
+          <p class="hint" style="margin:12px 0 0;">Same login as the Hub, Daily Updates and the other PLS HQ pages.</p>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    const pw = document.getElementById("loginPassword");
+    if(pw) pw.addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+  }
+  el.style.display = "flex";
+}
+function hideLoginGate(){ const el=document.getElementById("loginGate"); if(el) el.style.display="none"; }
+async function doLogin(){
+  const email = val("loginEmail").trim(), pw = val("loginPassword");
+  const errEl = document.getElementById("loginError");
+  errEl.style.display="none";
+  if(!email || !pw) return;
+  try{ await fbAuth.signInWithEmailAndPassword(email, pw); }
+  catch(e){
+    errEl.textContent = (e.code==="auth/invalid-credential" || e.code==="auth/wrong-password" || e.code==="auth/user-not-found")
+      ? "Wrong email or password." : "Couldn't sign in ("+e.code+")";
+    errEl.style.display="block";
+  }
+}
+function doLogout(){ if(fbAuth) fbAuth.signOut(); }
+
 function updateSyncBox(){
   const dot=document.getElementById("syncDot"), text=document.getElementById("syncText"), sub=document.getElementById("syncSub");
-  if(syncState==="ok"){ dot.className="dot"; text.textContent="Synced with team"; sub.textContent="Last update "+ (DB.meta.updatedAt? new Date(DB.meta.updatedAt).toLocaleString() : "just now"); }
-  else if(syncState==="connecting"){ dot.className="dot mid"; text.textContent="Connecting…"; sub.textContent="Reaching JSONBin"; }
+  if(!dot) return;
+  if(syncState==="ok"){ dot.className="dot"; text.textContent="Synced with team"; sub.textContent="Last update "+ (DB && DB.meta.updatedAt? new Date(DB.meta.updatedAt).toLocaleString() : "just now"); }
+  else if(syncState==="connecting"){ dot.className="dot mid"; text.textContent="Connecting…"; sub.textContent="Reaching shared storage"; }
   else if(syncState==="saving"){ dot.className="dot mid"; text.textContent="Saving…"; sub.textContent="Pushing your change to the team"; }
   else if(syncState==="retrying"){ dot.className="dot bad"; text.textContent="Retrying sync…"; sub.textContent="Your change is safe on this screen"; }
   else if(syncState==="offline"){ dot.className="dot bad"; text.textContent="Not synced yet"; sub.textContent="Visible here, still trying to reach the team copy"; }
-  else{ dot.className="dot bad"; text.textContent="Not configured"; sub.textContent="Add JSONBin keys in Settings"; }
+  else if(syncState==="denied"){ dot.className="dot bad"; text.textContent="Not allowed"; sub.textContent="Firestore rules blocked this login"; }
+  else if(syncState==="loggedout"){ dot.className="dot bad"; text.textContent="Signed out"; sub.textContent="Sign in to see shared data"; }
+  else{ dot.className="dot bad"; text.textContent="Not connected"; sub.textContent="Shared storage unavailable"; }
 }
 
 /* ---------------- helpers ---------------- */
@@ -2841,12 +3046,20 @@ vatSupplierDefaults: ${JSON.stringify(vatDefaults())}</p>
       </div>
 
       <div class="card card-lg" style="grid-column:1/-1;">
-        <div class="stat-label" style="margin-bottom:12px;">JSONBin connection</div>
-        <p style="font-size:13px;color:var(--text-secondary);">PLS HQ stores everyone's data in one shared JSONBin bin. These values are set once in the code before publishing — see <b>SETUP.md</b> in your project files for the full walkthrough.</p>
+        <div class="stat-label" style="margin-bottom:12px;">Shared storage (Firebase)</div>
+        <p style="font-size:13px;color:var(--text-secondary);">PLS HQ Finance saves to the same Firebase project as the Hub, Daily Updates and Social Media pages, and uses the same team logins. Every save checks nobody else saved a newer version first, and the screen updates by itself when a teammate saves.</p>
         <div class="field-row">
-          <div class="field"><label>Bin ID</label><input type="text" value="${jsonbinConfigured()?CONFIG.JSONBIN_BIN_ID:'not set'}" disabled></div>
+          <div class="field"><label>Signed in as</label><input type="text" value="${esc(fbAuth && fbAuth.currentUser? fbAuth.currentUser.email : 'not signed in')}" disabled></div>
           <div class="field"><label>Status</label><input type="text" value="${syncState}" disabled></div>
         </div>
+        <button class="btn btn-secondary btn-sm" onclick="saveDB(true)">Retry saving now</button>
+        <button class="btn btn-secondary btn-sm" onclick="reloadFromServer()">⟳ Reload from server</button>
+        <button class="btn btn-secondary btn-sm" onclick="downloadBackup()">⇩ Download full backup (.json)</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('importFile').click()">⇧ Import data (.json)</button>
+        <button class="btn btn-secondary btn-sm" onclick="doLogout()">Sign out</button>
+        <input type="file" id="importFile" accept=".json" class="hidden" onchange="importBackup(this.files[0])">
+        <p class="hint" style="margin-top:10px;">Changes you make show up on this screen straight away — you don't need to wait for the sync to finish. If it says "Retrying sync…" your entry is safe here and PLS HQ will keep trying to push it to the shared copy in the background.</p>
+      </div>
         <button class="btn btn-secondary btn-sm" onclick="saveDB(true)">Retry saving now</button>
         <button class="btn btn-secondary btn-sm" onclick="reloadFromServer()">⟳ Reload from server</button>
         <button class="btn btn-secondary btn-sm" onclick="downloadBackup()">⇩ Download full backup (.json)</button>
@@ -2924,9 +3137,14 @@ function removeCategory(c){
 function reloadFromServer(){
   const warning = pendingSince
     ? "You have a change here that hasn't synced yet — reloading from the server will DISCARD it. Try \"Retry saving now\" first. Reload anyway?"
-    : "This pulls the latest saved version from JSONBin and replaces what's on this screen. Continue?";
+    : "This pulls the latest saved version from the shared storage and replaces what's on this screen. Continue?";
   if(!confirm(warning)) return;
-  loadDB().then(()=>{render();toast("Reloaded from server");});
+  if(!firebaseConfigured() || !fbDb){ toast("Shared storage isn't available"); return; }
+  financeRef().get({source:"server"}).then(snap=>{
+    if(!snap.exists){ toast("Nothing saved in the shared storage yet"); return; }
+    DB = normalizeDB(snap.data()); lastRemoteStamp = DB.meta.updatedAt || null; pendingSince = null;
+    render(); toast("Reloaded from server");
+  }).catch(e=>{ console.error(e); toast("Couldn't reach the shared storage"); });
 }
 function downloadBackup(){
   const blob = new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});
@@ -2943,9 +3161,7 @@ function importBackup(file){
     try{
       const incoming = JSON.parse(e.target.result);
       if(!incoming.meta || !incoming.orders) throw new Error("Not a PLS HQ backup file");
-      DB = incoming;
-      DB.meta = Object.assign(emptyDB().meta, DB.meta||{});
-      ["orders","transactions","documents","ticketSales","reviewQueue","skuMap","payouts","costList"].forEach(k=>{ if(!DB[k]) DB[k]=[]; });
+      DB = normalizeDB(incoming);
       migrateChrisOwnershipChange();
       saveDB(true);
       toast(`Imported ${DB.orders.length} orders, ${DB.transactions.length} transactions`);
@@ -3257,6 +3473,8 @@ function render(){
     review:renderReview, distribution:renderDistribution, upload:renderUpload,
     vault:renderVault, settings:renderSettings, settlement:renderSettlement, suppliers:renderSuppliers
   })[page]();
+  const banner = migrationBannerHTML();
+  if(banner){ const c=document.getElementById("content"); if(c) c.insertAdjacentHTML("afterbegin", banner); }
 }
 
 async function init(){
