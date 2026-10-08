@@ -1508,6 +1508,26 @@ function bulkDelete(collection){
   ids.clear();
   saveDB(true); render();
 }
+function setOrderVat(id, v){
+  const o = DB.orders.find(x=>x.id===id);
+  if(!o) return;
+  const choice = (v==="excl"||v==="incl")? v : "";
+  if(choice) o.costSupplierVat = choice; else delete o.costSupplierVat;
+  if(choice && (o.supplier||"").trim() && choice!==vatDefaultFor(o.supplier)) setVatDefault(o.supplier, choice);
+  saveDB(true); render();
+}
+function bulkSetOrderVat(v){
+  if(!v) return;
+  const choice = (v==="excl"||v==="incl")? v : "";
+  const ids = selection.orders;
+  if(!ids.size) return;
+  DB.orders.forEach(o=>{
+    if(!ids.has(o.id)) return;
+    if(choice) o.costSupplierVat = choice; else delete o.costSupplierVat;
+  });
+  saveDB(true); render();
+  toast(`${ids.size} order${ids.size===1?"":"s"} set to "${VAT_LABELS[choice]}"`);
+}
 function bulkBarHTML(collection){
   const n = selection[collection].size;
   if(!n) return "";
@@ -1516,6 +1536,8 @@ function bulkBarHTML(collection){
     <span><b>${n}</b> ${label}${n===1?'':'s'} selected</span>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-secondary btn-sm" onclick="selection.${collection}.clear();render();">Clear selection</button>
+      ${collection==='orders'? `<select style="border:1px solid var(--border);border-radius:6px;padding:4px 6px;" onchange="bulkSetOrderVat(this.value);this.value='';">
+        <option value="">Set supplier VAT…</option><option value="excl">Excludes VAT</option><option value="incl">Includes VAT</option><option value="__unset">Not set</option></select>`:""}
       <button class="btn btn-danger btn-sm" onclick="bulkDelete('${collection}')">Delete selected</button>
     </div>
   </div>`;
@@ -1525,8 +1547,11 @@ function renderOrders(){
   const ords = ordersForMonth(selectedMonth);
   const totalC = ords.reduce((s,o)=>s+(+o.costToClient||0),0);
   const totalS = ords.reduce((s,o)=>s+(+o.costSupplier||0),0);
+  const totalVat = ords.reduce((s,o)=>s+orderVat(o),0);
+  const missingVat = vatOn()? ordersMissingVat(ords).length : 0;
   document.getElementById("content").innerHTML = `
     ${monthTabsHTML()}
+    ${missingVat? `<div class="banner"><span><b>${missingVat} order${missingVat===1?"":"s"}</b> ha${missingVat===1?"s":"ve"} a supplier cost but no VAT setting — pick <b>Excludes VAT</b> or <b>Includes VAT</b> in the Supplier cost VAT column. Only "Excludes VAT" orders add VAT to the Payments &amp; Settlement page.</span></div>`:""}
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;">
       <button class="btn btn-secondary btn-sm" onclick="page='upload';render();">⇧ Upload Wix export</button>
       <button class="btn btn-primary btn-sm" onclick="openOrderForm(null)">+ Add order</button>
@@ -1535,7 +1560,7 @@ function renderOrders(){
     <div class="table-wrap">
       <table>
         <thead><tr><th style="width:36px;"><input type="checkbox" ${ords.length && ords.every(o=>selection.orders.has(o.id))? "checked":""} onchange='toggleSelectAll("orders", ${JSON.stringify(ords.map(o=>o.id))}, this.checked)'></th><th>Wix Order No</th><th>Supplier Order No</th><th>Date</th><th>Customer</th><th>Product</th><th>SKU</th><th class="num">Qty</th><th class="num">Unit Price</th><th>Coupon</th><th>Supplier</th><th>Paid via</th>
-        <th class="num">Cost to Client</th><th class="num">Supplier Cost</th><th class="num">Gross Profit</th><th></th></tr></thead>
+        <th class="num">Cost to Client</th><th class="num">Supplier Cost</th><th>Supplier cost VAT</th><th class="num">Gross Profit</th><th></th></tr></thead>
         <tbody>
           ${ords.length? ords.map(o=>`
             <tr>
@@ -1553,13 +1578,21 @@ function renderOrders(){
               <td><span class="tag ${o.paymentMethod==='Payflex'?'needs':''}">${esc(o.paymentMethod||"EFT")}</span></td>
               <td class="num">${R(o.costToClient)}</td>
               <td class="num">${R(o.costSupplier)}</td>
+              <td>
+                <select style="border:1px solid var(--border);border-radius:6px;padding:3px 6px;${!vatChoiceOf(o) && (+o.costSupplier||0)>0 && vatOn()? "background:var(--amber-soft);":""}" onchange="setOrderVat('${o.id}', this.value)">
+                  <option value="excl" ${vatChoiceOf(o)==="excl"?"selected":""}>Excludes VAT</option>
+                  <option value="incl" ${vatChoiceOf(o)==="incl"?"selected":""}>Includes VAT</option>
+                  <option value="" ${!vatChoiceOf(o)?"selected":""}>Not set</option>
+                </select>
+                ${orderVat(o)>0? `<div class="hint" style="margin-top:2px;">+ ${R(orderVat(o))} VAT to Chris</div>`:""}
+              </td>
               <td class="num">${R((o.costToClient||0)-(o.costSupplier||0))}</td>
               <td class="row-actions">
                 <button class="btn btn-secondary btn-sm" onclick="openOrderForm('${o.id}')">Edit</button>
                 <button class="icon-btn" onclick="deleteRow('orders','${o.id}')">✕</button>
               </td>
-            </tr>`).join("") : `<tr><td colspan="16"><div class="empty-state"><div class="ic">▤</div>No orders logged for ${selectedMonth} yet</div></td></tr>`}
-          ${ords.length?`<tr class="total-row"><td colspan="12">TOTAL</td><td class="num">${R(totalC)}</td><td class="num">${R(totalS)}</td><td class="num">${R(totalC-totalS)}</td><td></td></tr>`:""}
+            </tr>`).join("") : `<tr><td colspan="17"><div class="empty-state"><div class="ic">▤</div>No orders logged for ${selectedMonth} yet</div></td></tr>`}
+          ${ords.length?`<tr class="total-row"><td colspan="12">TOTAL</td><td class="num">${R(totalC)}</td><td class="num">${R(totalS)}</td><td>${vatOn()? `<b>${R(totalVat)}</b> VAT to Chris`:""}</td><td class="num">${R(totalC-totalS)}</td><td></td></tr>`:""}
         </tbody>
       </table>
     </div>
