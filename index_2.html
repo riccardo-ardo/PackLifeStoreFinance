@@ -3149,7 +3149,7 @@ function reloadFromServer(){
   }).catch(e=>{ console.error(e); toast("Couldn't reach the shared storage"); });
 }
 /* ---------- Correction files ----------
-   A small .json file that ADDS order lines and CORRECTS specific fields on existing ones. Unlike "Import data" it never
+   A small .json file that ADDS order lines and transactions and CORRECTS specific fields on existing orders. Unlike "Import data" it never
    replaces anything: it works on the live data, shows what it will do first, skips any line that has been changed since the
    file was made (the "expect" check), and can safely be applied twice (lines that are already there are skipped). */
 function applyDataPatch(file){
@@ -3158,12 +3158,16 @@ function applyDataPatch(file){
   reader.onload = e=>{
     try{
       const patch = JSON.parse(e.target.result);
-      if(patch.kind!=="pls-finance-patch" || !Array.isArray(patch.add||[]) || !Array.isArray(patch.update||[])) throw new Error("not a PLS HQ correction file");
+      if(patch.kind!=="pls-finance-patch" || !Array.isArray(patch.add||[]) || !Array.isArray(patch.update||[]) || !Array.isArray(patch.addTransactions||[])) throw new Error("not a PLS HQ correction file");
       if(!storageReady || (remoteMissing && jsonbinConfigured())){ toast("Wait until the data has loaded (and been copied across) first"); return; }
       const same = (a,b)=> ((a==null||a==="")? (b==null||b===""||b===0) : String(a)===String(b)) || (Number(a)===Number(b) && a!=="" && b!=="" && a!=null && b!=null);
       const have = new Set(DB.orders.map(o=>o.id));
       const adds = (patch.add||[]).filter(o=>o && o.id && !have.has(o.id));
       const alreadyThere = (patch.add||[]).length - adds.length;
+      // transactions are skipped if the same id, or the same date + amount + description, is already there
+      const txExists = t=>DB.transactions.some(x=>x.id===t.id || (x.date===t.date && Number(x.amount)===Number(t.amount) && (x.description||"")===(t.description||"")));
+      const txAdds = (patch.addTransactions||[]).filter(t=>t && t.id && !txExists(t));
+      const txAlready = (patch.addTransactions||[]).length - txAdds.length;
       const ups = []; let changedSince = 0, missing = 0;
       (patch.update||[]).forEach(u=>{
         const o = DB.orders.find(x=>x.id===u.id);
@@ -3174,17 +3178,19 @@ function applyDataPatch(file){
         if(!ok){ changedSince++; return; }
         ups.push({o,u});
       });
-      if(!adds.length && !ups.length){ toast("Nothing to do — this file has already been applied"+(changedSince? ` (${changedSince} lines were changed since and left alone)`:"")); return; }
-      const msg = `${patch.description? patch.description+"\n\n" : ""}This will add ${adds.length} order line${adds.length===1?"":"s"} and correct ${ups.length} existing line${ups.length===1?"":"s"}.`
+      if(!adds.length && !ups.length && !txAdds.length){ toast("Nothing to do — this file has already been applied"+(changedSince? ` (${changedSince} lines were changed since and left alone)`:"")); return; }
+      const msg = `${patch.description? patch.description+"\n\n" : ""}This will add ${adds.length} order line${adds.length===1?"":"s"}, correct ${ups.length} existing line${ups.length===1?"":"s"} and add ${txAdds.length} transaction${txAdds.length===1?"":"s"}.`
         + (alreadyThere? `\n${alreadyThere} line(s) are already there and will be skipped.` : "")
+        + (txAlready? `\n${txAlready} transaction(s) are already there and will be skipped.` : "")
         + (changedSince? `\n${changedSince} line(s) were edited since this file was made and will be left alone.` : "")
         + (missing? `\n${missing} line(s) no longer exist and will be skipped.` : "")
         + `\n\nNothing is deleted. Continue?`;
       if(!confirm(msg)) return;
       adds.forEach(o=>DB.orders.push(o));
+      txAdds.forEach(t=>DB.transactions.push(t));
       ups.forEach(({o,u})=>{ Object.entries(u.set||{}).forEach(([k,v])=>{ o[k] = v; }); (u.unset||[]).forEach(k=>{ delete o[k]; }); });
       saveDB(true); render();
-      toast(`Added ${adds.length} line${adds.length===1?"":"s"}, corrected ${ups.length}`);
+      toast(`Added ${adds.length} order line${adds.length===1?"":"s"}, corrected ${ups.length}, added ${txAdds.length} transaction${txAdds.length===1?"":"s"}`);
     }catch(err){
       console.error(err);
       toast("Couldn't read that file — "+(err.message||err));
