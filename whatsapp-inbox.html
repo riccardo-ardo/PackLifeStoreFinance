@@ -471,9 +471,6 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .signed-in-row button:hover{color:var(--red);}
 
 /* ---------- WhatsApp Inbox ---------- */
-.wa-shell{display:grid;grid-template-columns:300px 1fr 260px;gap:0;height:75vh;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);}.wa-col-list{border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0;}
-.wa-col-thread{display:flex;flex-direction:column;min-width:0;overflow-y:auto;}
-.wa-col-customer{border-left:1px solid var(--border);background:var(--surface-alt);padding:18px;overflow-y:auto;}
 
 .wa-list-head{padding:14px;border-bottom:1px solid var(--border-soft);}
 .wa-list-head input{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;background:var(--surface-alt);margin-bottom:10px;}
@@ -481,7 +478,6 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-filter{flex:1;text-align:center;padding:5px 0;border-radius:7px;font-size:12px;font-weight:600;color:var(--text-secondary);cursor:pointer;}
 .wa-filter.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow-sm);}
 
-.wa-conv-list{flex:1;overflow-y:auto;}
 .wa-conv-item{display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border-soft);cursor:pointer;position:relative;}
 .wa-conv-item:hover{background:var(--surface-alt);}
 .wa-conv-item.active{background:var(--accent-soft);}
@@ -501,16 +497,13 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-empty .t{font-weight:700;font-size:14px;color:var(--text-secondary);}
 .wa-empty .s{font-size:12.5px;margin-top:4px;max-width:220px;}
 
-.wa-thread-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border-soft);position:sticky;top:0;z-index:5;background:var(--surface);}
 .wa-thread-name{font-weight:700;font-size:14.5px;}
 .wa-thread-phone{font-size:11.5px;color:var(--text-tertiary);font-family:var(--font-mono);}
 
-.wa-messages{padding:18px;display:flex;flex-direction:column;gap:4px;background:var(--bg);min-height:400px;}
 .wa-date-sep{text-align:center;font-size:11px;color:var(--text-tertiary);margin:14px 0 8px;font-weight:600;}
 .wa-bubble-row{display:flex;margin-bottom:2px;}
 .wa-bubble-row.in{justify-content:flex-start;}
 .wa-bubble-row.out{justify-content:flex-end;}
-.wa-bubble{max-width:62%;padding:9px 13px;border-radius:14px;font-size:13.5px;line-height:1.45;position:relative;}
 .wa-bubble-row.in .wa-bubble{background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:4px;}
 .wa-bubble-row.out .wa-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:4px;}
 .wa-bubble-row.out .wa-bubble.template{background:#3a3a3c;}
@@ -518,13 +511,10 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-bubble .wb-meta{display:flex;gap:5px;align-items:center;justify-content:flex-end;margin-top:4px;font-size:10px;opacity:.7;}
 .wa-bubble-row.in .wb-meta{justify-content:flex-start;}
 .wa-tick{font-size:10px;}
-.wa-media-open-btn{display:block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:inherit;border-radius:8px;padding:8px 12px;font-size:12.5px;cursor:pointer;margin-bottom:6px;font-family:inherit;}
 .wa-bubble-row.in .wa-media-open-btn{background:var(--surface-alt);border-color:var(--border);}
 .wa-media-open-btn:disabled{opacity:.6;cursor:default;}
 
-.wa-composer{border-top:1px solid var(--border-soft);padding:12px 16px;background:var(--surface);position:sticky;bottom:0;z-index:5;}
 .wa-text-composer{display:flex;gap:8px;align-items:flex-end;}
-.wa-text-composer textarea{flex:1;resize:none;border:1px solid var(--border);border-radius:12px;padding:9px 13px;font-size:13.5px;max-height:120px;font-family:inherit;}
 .wa-send-btn{background:var(--accent);color:#fff;border:none;width:38px;height:38px;border-radius:50%;font-size:15px;cursor:pointer;flex:0 0 auto;}
 .wa-send-btn:disabled{background:var(--border);cursor:not-allowed;}
 .wa-window-expired{background:var(--amber-soft);border:1px solid #F5D9A8;border-radius:10px;padding:12px 14px;}
@@ -541,12 +531,88 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-cust-section select{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;}
 .wa-cust-note{font-size:11.5px;color:var(--text-tertiary);line-height:1.6;margin-top:16px;padding-top:14px;border-top:1px solid var(--border-soft);}
 
+/* ---------- WhatsApp Inbox v2 (layout rebuilt) ----------
+   Three columns inside a shell that fitWaShell() sizes to the screen. Only the conversation list, the messages and the
+   customer panel scroll — the page itself never does — and the composer is always visible. */
+.wa-shell{display:grid;grid-template-columns:minmax(250px,310px) minmax(0,1fr) minmax(230px,270px);gap:0;
+  height:calc(100vh - 190px);height:calc(100dvh - 190px);min-height:440px;
+  border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);overflow:hidden;position:relative;}
+.wa-col-list,.wa-col-thread,.wa-col-customer{min-height:0;min-width:0;}
+.wa-col-list{border-right:1px solid var(--border);display:flex;flex-direction:column;}
+.wa-col-thread{display:flex;flex-direction:column;overflow:hidden;background:var(--bg);position:relative;}
+.wa-col-customer{border-left:1px solid var(--border);background:var(--surface-alt);padding:18px;overflow-y:auto;overscroll-behavior:contain;}
+#waThreadActive{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
+#waThreadActive.hidden{display:none !important;}
+.wa-thread-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border-soft);background:var(--surface);flex:0 0 auto;}
+.wa-thread-actions{display:flex;gap:6px;align-items:center;flex:0 0 auto;}
+.wa-icon-btn{display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:var(--surface-alt);font-size:15px;line-height:1;padding:0;color:var(--text);}
+.wa-icon-btn:hover{background:var(--border-soft);}
+.wa-conv-list{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+.wa-conv-item{outline:none;}
+.wa-conv-item:focus-visible{box-shadow:inset 0 0 0 2px var(--accent);}
+.wa-messages{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:16px 18px 10px;display:flex;flex-direction:column;gap:0;background:var(--bg);scroll-behavior:auto;}
+.wa-msgs-wrap{position:relative;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;}
+.wa-bubble-row{display:flex;margin-top:8px;}
+.wa-bubble-row.cont{margin-top:2px;}
+.wa-bubble{max-width:min(68%,560px);padding:8px 12px 6px;border-radius:14px;font-size:13.5px;line-height:1.45;position:relative;overflow-wrap:anywhere;word-break:break-word;}
+.wa-text{white-space:pre-wrap;}
+.wa-bubble.big-emoji{background:transparent !important;border:none !important;box-shadow:none;font-size:34px;line-height:1.2;color:inherit;padding:2px 4px;}
+.wa-bubble.sticker-only{background:transparent !important;border:none !important;padding:0;}
+.wa-bubble.sticker-only .wb-meta{color:var(--text-tertiary);}
+.wa-bubble a{color:inherit;text-decoration:underline;text-underline-offset:2px;}
+.wa-bubble-row.in .wa-bubble a{color:var(--blue);}
+.wa-bubble .wb-meta{white-space:normal;}
+.wa-media{margin:0 -4px 6px;line-height:0;}
+.wa-media img,.wa-media video{display:block;max-width:100%;width:auto;height:auto;max-height:340px;border-radius:10px;background:var(--border-soft);object-fit:contain;}
+.wa-media img[data-lightbox]{cursor:zoom-in;min-width:80px;min-height:80px;}
+.wa-media audio{width:240px;max-width:100%;}
+.wa-media.sticker img{max-height:160px;max-width:160px;background:transparent;}
+.wa-media-fallback,.wa-unsupported{white-space:normal;line-height:1.4;font-size:12.5px;border-radius:10px;padding:9px 11px;margin:0 -4px 6px;background:rgba(0,0,0,.06);}
+.wa-bubble-row.out .wa-media-fallback{background:rgba(255,255,255,.18);}
+.wa-unsupported{background:var(--amber-soft);border:1px solid #F5D9A8;color:#8A5A0A;}
+.wa-unsupported b{display:block;margin-bottom:2px;}
+.wa-bubble-row.out .wa-unsupported{color:#8A5A0A;}
+.wa-media-open-btn{display:block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:inherit;border-radius:8px;padding:8px 12px;font-size:12.5px;cursor:pointer;margin:0 0 6px;font-family:inherit;}
+.wa-date-sep{text-align:center;font-size:11px;color:var(--text-tertiary);margin:14px 0 6px;font-weight:600;}
+.wa-date-sep span{background:var(--surface);border:1px solid var(--border-soft);border-radius:20px;padding:3px 12px;display:inline-block;}
+.wa-load-earlier{align-self:center;margin:4px 0 8px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--text-secondary);}
+.wa-load-earlier:hover{background:var(--surface-alt);}
+.wa-new-pill{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);background:var(--text);color:#fff;border:none;border-radius:20px;padding:7px 14px;font-size:12px;font-weight:600;box-shadow:var(--shadow-lg);z-index:4;}
+.wa-composer{border-top:1px solid var(--border-soft);padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);flex:0 0 auto;}
+.wa-text-composer{display:flex;gap:8px;align-items:flex-end;}
+.wa-text-composer textarea{flex:1;resize:none;border:1px solid var(--border);border-radius:12px;padding:9px 13px;font-size:14px;line-height:1.4;max-height:140px;font-family:inherit;overflow-y:hidden;}
+.wa-text-composer textarea:focus-visible,.wa-list-head input:focus-visible{outline:2px solid var(--accent);outline-offset:-1px;}
+.wa-send-btn:disabled{opacity:.5;}
+.wa-quick-menu{bottom:46px;}
+.wa-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:300;display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;}
+.wa-lightbox.hidden{display:none !important;}
+.wa-lightbox img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;}
+.wa-lightbox-close{position:absolute;top:14px;right:16px;background:rgba(255,255,255,.18);border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:18px;cursor:pointer;}
+.wa-lightbox-open{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;background:rgba(255,255,255,.18);padding:7px 14px;border-radius:20px;text-decoration:none;}
+#menuBtn{display:none;}
+.wa-thread-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wa-thread-phone{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wa-info-head{display:none;}
+@media (max-width:860px){ #menuBtn{display:inline-flex !important;align-items:center;justify-content:center;} }
+
+/* tablet & phone: one pane at a time (list → conversation), customer details as a slide-over */
 @media (max-width:1000px){
-  .wa-shell{grid-template-columns:1fr;}
-  .wa-col-customer{display:none;}
-  .wa-col-list.wa-mobile-hidden{display:none;}
-  .wa-col-thread.wa-mobile-hidden{display:none;}
+  .wa-shell{grid-template-columns:minmax(0,1fr);}
+  .wa-shell[data-view="list"] .wa-col-thread{display:none;}
+  .wa-shell[data-view="thread"] .wa-col-list{display:none;}
+  .wa-col-list{border-right:none;}
+  .wa-col-customer{display:none;position:absolute;inset:0;z-index:12;border-left:none;background:var(--surface);}
+  .wa-shell.show-info .wa-col-customer{display:block;}
+  .wa-shell.show-info .wa-info-head{display:flex;justify-content:flex-end;margin:-6px 0 6px;}
+  .wa-icon-btn{display:inline-flex;}
+  .wa-bubble{max-width:84%;}
 }
+@media (max-width:560px){
+  .wa-thread-head{padding:10px 12px;}
+  .wa-messages{padding:12px 10px 8px;}
+  .wa-composer{padding-left:10px;padding-right:10px;}
+}
+@media (prefers-reduced-motion:reduce){ *{scroll-behavior:auto !important;transition:none !important;} }
 
 #waTab-inbox{display:flex;flex-direction:column;}
 #waTab-inbox.hidden{display:none;}
@@ -606,6 +672,7 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 /* ---------- WhatsApp Phase 3: Customers/Templates/Batch ---------- */
 .wa-contact-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border-soft);}
 .wa-contact-card:last-child{border-bottom:none;}
+.wa-contact-card{content-visibility:auto;contain-intrinsic-size:auto 64px;}   /* long contact lists only paint what is on screen */
 .wa-contact-card input[type=checkbox]{width:16px;height:16px;cursor:pointer;}
 .wa-contact-card .cc-info{flex:1;min-width:0;}
 .wa-contact-card .cc-name{font-weight:700;font-size:13px;}
@@ -632,16 +699,8 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 .wa-batch-coupon-input{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;margin-bottom:8px;}
 
 .nav-item{text-decoration:none;}
-/* This page only. Scoped to this file — these selectors are shared
-   page-shell elements, so none of this touches the other HQ pages.
-
-   Deliberately conservative: the page is always allowed to scroll
-   normally as a fallback (html/body/#app/.main/.content are untouched).
-   Only .wa-col-thread scrolls internally (see extra_css.css), so the
-   composer can stay pinned to the bottom of that column via
-   position:sticky — a single, safe scroll boundary, never a nested
-   overflow:hidden trap. Customers/Templates lists get their own
-   internal scroll too, purely for convenience. */
+/* Inbox layout: see "WhatsApp Inbox v2" above — the shell is fitted to the screen by fitWaShell(), so only the conversation
+   list, the message list and the customer panel scroll. Customers / Templates just get their own internal scroll. */
 #waTab-customers, #waTab-templates { max-height: 70vh; overflow-y: auto; }
 
 </style>
@@ -677,7 +736,7 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
 
   <div class="main">
     <div class="topbar">
-      <button class="btn-ghost" id="menuBtn" style="display:none;font-size:18px;">☰</button>
+      <button class="btn-ghost" id="menuBtn" style="font-size:18px;" aria-label="Open menu">☰</button>
       <div class="page-title">WhatsApp</div>
       <div class="spacer"></div>
       <div class="signed-in-row" id="signedInRow">
@@ -698,10 +757,10 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
       </div>
 
       <div id="waTab-inbox">
-      <div class="wa-shell">
+      <div class="wa-shell" id="waShell" data-view="list">
         <div class="wa-col-list">
           <div class="wa-list-head">
-            <input type="text" id="waSearch" placeholder="Search conversations…">
+            <input type="search" id="waSearch" placeholder="Search conversations…" aria-label="Search conversations" autocomplete="off">
             <div class="wa-filter-tabs">
               <div class="wa-filter active" data-filter="all" onclick="setWaFilter('all')">All</div>
               <div class="wa-filter" data-filter="unread" onclick="setWaFilter('unread')">Unread</div>
@@ -729,15 +788,22 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
             <div class="t">Select a conversation</div>
             <div class="s">Customer messages will appear here as they come in.</div>
           </div>
-          <div id="waThreadActive" class="hidden" style="display:flex;flex-direction:column;">
+          <div id="waThreadActive" class="hidden">
             <div class="wa-thread-head">
+              <button class="wa-icon-btn" onclick="setWaView('list')" aria-label="Back to conversations" title="Back">←</button>
               <div class="feed-avatar" id="waThreadAvatar"></div>
               <div style="flex:1;min-width:0;">
                 <div class="wa-thread-name" id="waThreadName"></div>
                 <div class="wa-thread-phone" id="waThreadPhone"></div>
               </div>
+              <div class="wa-thread-actions">
+                <button class="wa-icon-btn" onclick="toggleWaInfo()" aria-label="Customer details" title="Customer details">ⓘ</button>
+              </div>
             </div>
-            <div class="wa-messages" id="waMessages"></div>
+            <div class="wa-msgs-wrap">
+              <div class="wa-messages" id="waMessages" role="log" aria-live="polite" aria-label="Messages"></div>
+              <button id="waNewPill" class="wa-new-pill hidden" onclick="scrollMsgsToBottom()">↓ New messages</button>
+            </div>
             <div class="wa-composer" id="waComposer">
               <div id="waWindowExpired" class="wa-window-expired hidden">
                 <div class="t">24-hour reply window expired</div>
@@ -750,11 +816,11 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
               </div>
               <div id="waTextComposer" class="wa-text-composer">
                 <div class="wa-quick-wrap">
-                  <button class="wa-quick-btn" onclick="toggleQuickReplies()" title="Quick replies">⚡</button>
+                  <button class="wa-quick-btn" onclick="toggleQuickReplies()" title="Quick replies" aria-label="Quick replies">⚡</button>
                   <div id="waQuickRepliesMenu" class="wa-quick-menu hidden"></div>
                 </div>
-                <textarea id="waReplyText" placeholder="Type a reply…" rows="1"></textarea>
-                <button class="wa-send-btn" onclick="sendWaText()" id="waSendBtn">➤</button>
+                <textarea id="waReplyText" placeholder="Type a reply…" rows="1" aria-label="Type a reply"></textarea>
+                <button class="wa-send-btn" onclick="sendWaText()" id="waSendBtn" aria-label="Send message" disabled>➤</button>
               </div>
             </div>
           </div>
@@ -766,6 +832,7 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
             <div class="s">No conversation selected</div>
           </div>
           <div id="waCustomerPanel" class="hidden">
+            <div class="wa-info-head"><button class="wa-icon-btn" style="display:inline-flex;" onclick="toggleWaInfo()" aria-label="Close customer details">✕</button></div>
             <div class="wa-cust-avatar" id="waCustAvatar"></div>
             <div class="wa-cust-name" id="waCustName"></div>
             <div class="wa-cust-phone" id="waCustPhone"></div>
@@ -917,7 +984,12 @@ tr.total-row td{font-weight:700;background:var(--surface-alt);border-top:1px sol
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="wa-lightbox hidden" id="waLightbox" onclick="closeLightbox()" role="dialog" aria-modal="true" aria-label="Photo viewer">
+  <img alt="">
+  <button class="wa-lightbox-close" aria-label="Close" onclick="closeLightbox()">✕</button>
+  <a id="waLightboxOpen" class="wa-lightbox-open" href="#" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Open original ↗</a>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 /* ============================================================
@@ -1182,7 +1254,7 @@ function attachConversationList(){
     .onSnapshot(snap=>{
       waConversations = [];
       snap.forEach(doc=> waConversations.push({ id: doc.id, ...doc.data() }));
-      renderConvList();
+      scheduleConvList();
       checkForNewMessageNotifications();
       refreshActiveCustomerPanel();
     }, err=>{ console.error("conversation list listener error", err); toast("Couldn't load conversations"); });
@@ -1201,10 +1273,17 @@ function setWaFilter(f){
   document.querySelectorAll(".wa-filter").forEach(el=>el.classList.toggle("active", el.dataset.filter===f));
   renderConvList();
 }
+let waConvHtml = "";
+let waConvRaf = 0;
+function scheduleConvList(){
+  // coalesce bursts of Firestore updates into one render (a timer, not requestAnimationFrame, so it also runs in a background tab)
+  if(waConvRaf) return;
+  waConvRaf = setTimeout(()=>{ waConvRaf = 0; renderConvList(); }, 30);
+}
 function renderConvList(){
-  const q = (document.getElementById("waSearch").value || "").toLowerCase().trim();
-  const statusF = document.getElementById("waStatusFilter").value;
-  const tagF = document.getElementById("waTagFilter").value;
+  const q = ($("waSearch").value || "").toLowerCase().trim();
+  const statusF = $("waStatusFilter").value;
+  const tagF = $("waTagFilter").value;
   const me = localStorage.getItem("pls_identity") || "";
   let list = waConversations;
   if(waFilter === "unread") list = list.filter(c => (c.unreadCount||0) > 0);
@@ -1215,43 +1294,53 @@ function renderConvList(){
 
   refreshTagFilterOptions();
 
-  const el = document.getElementById("waConvList");
+  let html;
   if(!list.length){
-    el.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><div class="ic">💬</div>${waFilter==="unread"?"No unread conversations":waFilter==="mine"?"Nothing assigned to you":"No conversations yet"}</div>`;
-    return;
-  }
-  el.innerHTML = list.map(c=>{
-    const unread = c.unreadCount || 0;
-    const status = c.status || "open";
-    const tags = c.tags || [];
-    return `<div class="wa-conv-item ${c.id===waActivePhone?'active':''}" onclick="openConversation('${c.id}')">
-      <div class="feed-avatar ${avatarClass(c.customerName||c.phone)}">${initials(c.customerName||c.phone)}</div>
-      <div class="wc-body">
-        <div class="wc-top"><span class="wc-name">${escapeHtml(c.customerName||c.phone)}</span><span class="wc-time">${fmtListTime(c.lastMessageAt)}</span></div>
-        <div class="wc-preview">${c.lastMessageDirection==='out'?'You: ':''}${escapeHtml(c.lastMessageText||'')}</div>
-        <div class="wc-meta-row">
-          <span class="wa-status-pill ${status}">${STATUS_LABEL[status]}</span>
-          ${tags.slice(0,2).map(t=>`<span class="wa-tag-pill-sm">${escapeHtml(t)}</span>`).join("")}
-          ${c.assignedTo?`<span class="wa-assignee-avatar ${avatarClass(c.assignedTo)}" title="${escapeHtml(c.assignedTo)}">${initials(c.assignedTo)}</span>`:""}
+    html = `<div class="empty-state" style="padding:40px 20px;"><div class="ic">💬</div>${waFilter==="unread"?"No unread conversations":waFilter==="mine"?"Nothing assigned to you":"No conversations yet"}</div>`;
+  } else {
+    html = list.map(c=>{
+      const unread = c.unreadCount || 0;
+      const status = c.status || "open";
+      const tags = c.tags || [];
+      const name = c.customerName || c.phone || "";
+      return `<div class="wa-conv-item ${c.id===waActivePhone?'active':''}" data-phone="${escapeHtml(c.id)}" role="button" tabindex="0" aria-label="${escapeHtml(name)}${unread?`, ${unread} unread`:""}"${c.id===waActivePhone?' aria-current="true"':""}>
+        <div class="feed-avatar ${avatarClass(name)}">${initials(name)}</div>
+        <div class="wc-body">
+          <div class="wc-top"><span class="wc-name">${escapeHtml(name)}</span><span class="wc-time">${fmtListTime(c.lastMessageAt)}</span></div>
+          <div class="wc-preview">${c.lastMessageDirection==='out'?'You: ':''}${escapeHtml(previewText(c.lastMessageText))}</div>
+          <div class="wc-meta-row">
+            <span class="wa-status-pill ${status}">${STATUS_LABEL[status]||status}</span>
+            ${tags.slice(0,2).map(t=>`<span class="wa-tag-pill-sm">${escapeHtml(t)}</span>`).join("")}
+            ${c.assignedTo?`<span class="wa-assignee-avatar ${avatarClass(c.assignedTo)}" title="${escapeHtml(c.assignedTo)}">${initials(c.assignedTo)}</span>`:""}
+          </div>
         </div>
-      </div>
-      ${unread>0?`<span class="wc-unread">${unread>99?'99+':unread}</span>`:''}
-    </div>`;
-  }).join("");
+        ${unread>0?`<span class="wc-unread">${unread>99?'99+':unread}</span>`:''}
+      </div>`;
+    }).join("");
+  }
+  if(html === waConvHtml) return;          // nothing changed — leave the DOM (and your scroll position) alone
+  waConvHtml = html;
+  $("waConvList").innerHTML = html;
 }
+let waTagSig = "";
 function refreshTagFilterOptions(){
-  const sel = document.getElementById("waTagFilter");
-  const cur = sel.value;
   const allTags = new Set();
   waConversations.forEach(c=> (c.tags||[]).forEach(t=>allTags.add(t)));
-  sel.innerHTML = '<option value="">Any tag</option>' + [...allTags].sort().map(t=>`<option ${t===cur?'selected':''}>${escapeHtml(t)}</option>`).join("");
+  const tags = [...allTags].sort();
+  const sig = tags.join("\u0001");
+  if(sig === waTagSig) return;             // only touch the dropdown when the set of tags actually changed
+  waTagSig = sig;
+  const sel = $("waTagFilter");
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Any tag</option>' + tags.map(t=>`<option ${t===cur?'selected':''}>${escapeHtml(t)}</option>`).join("");
 }
-document.getElementById("waSearch").addEventListener("input", renderConvList);
+document.getElementById("waSearch").addEventListener("input", scheduleConvList);
 
 /* ---------------- top-level tabs ---------------- */
 function switchWaTopTab(tab){
   document.querySelectorAll(".tabs2 .tab2").forEach(el=>el.classList.toggle("active", el.dataset.tab===tab));
   ["inbox","customers","templates"].forEach(t=>document.getElementById("waTab-"+t).classList.toggle("hidden", t!==tab));
+  if(tab==="inbox") fitWaShell();
   if(tab==="customers" && !waContactsLoaded) loadContacts();
   if(tab==="templates" && !waTemplatesLoaded) loadTemplates();
 }
@@ -1564,27 +1653,36 @@ async function runBatchSend(){
 
 /* ---------------- opening a conversation ---------------- */
 function openConversation(phone){
+  if(waActivePhone && waActivePhone !== phone) waDrafts[waActivePhone] = $("waReplyText").value;
+  const switching = waActivePhone !== phone;
   waActivePhone = phone;
-  renderConvList();
-  document.getElementById("waThreadEmpty").classList.add("hidden");
-  document.getElementById("waThreadActive").classList.remove("hidden");
-  document.getElementById("waCustomerEmpty").classList.add("hidden");
-  document.getElementById("waCustomerPanel").classList.remove("hidden");
+  waConvHtml = ""; renderConvList();
+  $("waThreadEmpty").classList.add("hidden");
+  $("waThreadActive").classList.remove("hidden");
+  $("waCustomerEmpty").classList.add("hidden");
+  $("waCustomerPanel").classList.remove("hidden");
+  setWaView("thread");
 
   const conv = waConversations.find(c=>c.id===phone) || { phone, customerName: phone };
-  document.getElementById("waThreadAvatar").className = "feed-avatar " + avatarClass(conv.customerName||phone);
-  document.getElementById("waThreadAvatar").textContent = initials(conv.customerName||phone);
-  document.getElementById("waThreadName").textContent = conv.customerName || phone;
-  document.getElementById("waThreadPhone").textContent = "+" + phone;
-  document.getElementById("waCustAvatar").textContent = initials(conv.customerName||phone);
-  document.getElementById("waCustName").textContent = conv.customerName || phone;
-  document.getElementById("waCustPhone").textContent = "+" + phone;
-  document.getElementById("waConvStatus").value = conv.status || "open";
+  const label = conv.customerName || phone;
+  $("waThreadAvatar").className = "feed-avatar " + avatarClass(label);
+  $("waThreadAvatar").textContent = initials(label);
+  $("waThreadName").textContent = label;
+  $("waThreadPhone").textContent = "+" + phone;
+  $("waCustAvatar").textContent = initials(label);
+  $("waCustName").textContent = label;
+  $("waCustPhone").textContent = "+" + phone;
+  $("waConvStatus").value = conv.status || "open";
   fillAssigneeDropdown();
-  document.getElementById("waConvAssignee").value = conv.assignedTo || "";
+  $("waConvAssignee").value = conv.assignedTo || "";
   renderTagChips(conv.tags || []);
 
   updateComposerState(conv);
+  if(switching){
+    resetMessagesView();
+    $("waReplyText").value = waDrafts[phone] || "";
+    autosizeReply(); updateSendState();
+  }
 
   // mark read
   fbDb.collection("whatsapp_conversations").doc(phone).update({ unreadCount: 0 }).catch(e=>console.warn("mark read failed", e));
@@ -1597,58 +1695,289 @@ function openConversation(phone){
       renderNotes(notes);
     }, err=>console.error("notes listener error", err));
 
+  attachMessagesListener(phone);
+  fitWaShell();
+  if(window.innerWidth > 1000) $("waReplyText").focus({ preventScroll:true });
+}
+
+/* ---- message list + composer helpers: see "message display helpers" below ---- */
+/* ---------------- layout: fit the inbox to the screen ---------------- */
+const $ = id => document.getElementById(id);
+function fitWaShell(){
+  const shell = $("waShell"), tab = $("waTab-inbox");
+  if(!shell || !tab || tab.classList.contains("hidden")) return;
+  const top = shell.getBoundingClientRect().top + window.scrollY;
+  const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const padB = parseFloat(getComputedStyle($("content")).paddingBottom) || 0;   // leave the page's own bottom padding so nothing scrolls
+  shell.style.height = Math.max(440, Math.floor(vh - top - padB - 2)) + "px";
+}
+window.addEventListener("resize", fitWaShell);
+window.addEventListener("orientationchange", ()=>setTimeout(fitWaShell, 250));
+if(window.visualViewport) window.visualViewport.addEventListener("resize", fitWaShell);
+
+// phone/tablet show one pane at a time: "list" or "thread"
+function setWaView(view){
+  const s = $("waShell"); if(!s) return;
+  s.dataset.view = view;
+  s.classList.remove("show-info");
+}
+function toggleWaInfo(){ const s = $("waShell"); if(s) s.classList.toggle("show-info"); }
+
+/* ---------------- message display helpers ---------------- */
+const UNSUPPORTED_RE = /^\[?\s*unsupported message type\s*\]?$/i;
+// captions the backend adds on its own ("📷 Photo", "… couldn't load — open WhatsApp to view") — redundant once the attachment (or the clear fallback box) is on screen
+const AUTO_LABEL_RE = /^(📷 Photo|🎥 Video|🎤 Voice note|😀 Sent a sticker|🎞️? ?GIF|📷 Photo \(couldn't load[^)]*\)|🎥 Sent a video[^)]*\)|🎤 Sent a voice note[^)]*\))$/;
+function isUnsupportedMsg(m){ return m.type === "unsupported" || m.mediaType === "unsupported" || UNSUPPORTED_RE.test((m.text||"").trim()); }
+function previewText(t){ return UNSUPPORTED_RE.test((t||"").trim()) ? "⚠️ Unsupported message" : (t||""); }
+function linkify(escaped){
+  return escaped.replace(/\bhttps?:\/\/[^\s<]*[^\s<.,;:!?)\]'"]/g, u=>`<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+}
+function msgDate(m){ return m.createdAt ? (m.createdAt.toDate ? m.createdAt.toDate() : new Date(m.createdAt)) : new Date(); }
+function mediaFallback(icon, label){ return `<div class="wa-media-fallback">${icon} ${label}</div>`; }
+// Returns { html, shown } — shown=true means the attachment itself is visible (so an auto "📷 Photo" caption is redundant)
+function mediaBlock(m){
+  const type = (m.mediaType||"").toLowerCase();
+  const url = m.mediaUrl || "";
+  const eu = escapeHtml(url);
+  const isVideoUrl = /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url);
+  if(type === "image" || type === "gif" || type === "sticker"){
+    if(!url && m.mediaFileRef && type === "gif") return { html:`<button class="wa-media-open-btn" data-media-ref="${escapeHtml(m.mediaFileRef)}" data-media-type="video">🎞️ Play GIF →</button>`, shown:true };
+    if(!url){
+      const lbl = type==="sticker" ? ["😀","Sticker — open WhatsApp to view it"] : type==="gif" ? ["🎞️","GIF — open WhatsApp to view it"] : ["📷","Photo couldn't be loaded — open WhatsApp to view it"];
+      return { html: mediaFallback(lbl[0], lbl[1]), shown:false };
+    }
+    if(isVideoUrl) return { html:`<div class="wa-media"><video src="${eu}" autoplay muted loop playsinline preload="metadata"${type==="gif"?"":" controls"}></video></div>`, shown:true };
+    return { html:`<div class="wa-media${type==="sticker"?" sticker":""}"><img src="${eu}" alt="${type==="sticker"?"Sticker":type==="gif"?"GIF":"Photo"}" loading="lazy" decoding="async" data-lightbox="${eu}"></div>`, shown:true };
+  }
+  if(type === "video"){
+    if(!url && m.mediaFileRef) return { html:`<button class="wa-media-open-btn" data-media-ref="${escapeHtml(m.mediaFileRef)}" data-media-type="video">🎥 Play video →</button>`, shown:true };
+    if(!url) return { html: mediaFallback("🎥","Video couldn't be loaded — open WhatsApp to view it"), shown:false };
+    return { html:`<div class="wa-media"><video src="${eu}" controls playsinline preload="metadata"></video></div>`, shown:true };
+  }
+  if(type === "audio"){
+    if(url) return { html:`<div class="wa-media"><audio src="${eu}" controls preload="none"></audio></div>`, shown:true };
+    if(m.mediaFileRef) return { html:`<button class="wa-media-open-btn" data-media-ref="${escapeHtml(m.mediaFileRef)}" data-media-type="audio">🎤 Play voice note →</button>`, shown:true };
+    return { html: mediaFallback("🎤","Voice note couldn't be loaded — open WhatsApp to play it"), shown:false };
+  }
+  if(type === "document"){
+    if(url) return { html:`<a class="wa-media-open-btn" href="${eu}" target="_blank" rel="noopener noreferrer">📄 Open document →</a>`, shown:true };
+    if(m.mediaFileRef) return { html:`<button class="wa-media-open-btn" data-media-ref="${escapeHtml(m.mediaFileRef)}" data-media-type="document">📄 Open document →</button>`, shown:true };
+    return { html:"", shown:false };
+  }
+  if(type === "location" && m.location && m.location.latitude != null && m.location.longitude != null){
+    const q = encodeURIComponent(m.location.latitude + "," + m.location.longitude);
+    return { html:`<a class="wa-media-open-btn" href="https://www.google.com/maps?q=${q}" target="_blank" rel="noopener noreferrer">📍 Open in Maps →</a>`, shown:false };
+  }
+  return { html:"", shown:false };
+}
+function msgSignature(m){ return [m.text||"", m.status||"", m.mediaUrl||"", m.mediaFileRef||"", m.mediaType||"", m.type||""].join("\u0001"); }
+function msgRowHtml(m, prev){
+  const d = msgDate(m);
+  const cont = !!(prev && prev.direction === m.direction && msgDate(prev).toDateString() === d.toDateString());
+  const dir = m.direction === "out" ? "out" : "in";
+  const isTemplate = m.type === "template";
+  const isAutomation = m.source === "automation";
+  const tick = dir === "out" ? statusTick(m.status) : "";
+  let labelLine = "";
+  if(isAutomation) labelLine = `<div style="font-size:10.5px;opacity:.75;margin-bottom:3px;">🤖 Automated · ${escapeHtml(m.templateName||'')}</div>`;
+  else if(isTemplate) labelLine = `<div style="font-size:10.5px;opacity:.75;margin-bottom:3px;">📄 Template: ${escapeHtml(m.templateName||'')}</div>`;
+  const unsupported = isUnsupportedMsg(m);
+  const mb = unsupported
+    ? { html:`<div class="wa-unsupported"><b>⚠️ Unsupported message</b>WhatsApp didn't pass this on to us. This is usually a GIF picked from WhatsApp's GIF search, a poll, or another special message type. Ask the customer to send it again as a photo or video.</div>`, shown:true }
+    : mediaBlock(m);
+  let text = unsupported ? "" : (m.text || "");
+  if(mb.html && AUTO_LABEL_RE.test(text.trim())) text = "";
+  const bigEmoji = !mb.html && !labelLine && text && /^(?:\p{Extended_Pictographic}[️‍]*\s*){1,4}$/u.test(text.trim());
+  const cls = "wa-bubble" + (isTemplate||isAutomation ? " template" : "") + (isAutomation ? " automation" : "") + (bigEmoji ? " big-emoji" : "") + ((m.mediaType||"").toLowerCase()==="sticker" && mb.shown && !text ? " sticker-only" : "");
+  return `<div class="wa-bubble-row ${dir}${cont?" cont":""}" data-id="${escapeHtml(m.id)}"><div class="${cls}">${labelLine}${mb.html}${text ? `<span class="wa-text">${linkify(escapeHtml(text))}</span>` : ""}<div class="wb-meta">${fmtTime(m.createdAt)} ${tick}</div></div></div>`;
+}
+
+/* ---------------- messages: patched in place, never rebuilt unless it has to be ---------------- */
+let waMsgs = [];                 // messages currently on screen (oldest → newest)
+let waMsgEls = new Map();        // message id → row element
+let waMsgSig = new Map();        // message id → signature (to spot edits such as delivery ticks)
+let waMsgLimit = 300;
+let waMsgHasMore = false;
+let waStick = true;              // is the view pinned to the newest message?
+let waAnchor = null;             // keeps your place when older messages are loaded above
+function msgsNearBottom(el){ return el.scrollHeight - el.scrollTop - el.clientHeight < 90; }
+function hideNewPill(){ const p = $("waNewPill"); if(p) p.classList.add("hidden"); }
+function scrollMsgsToBottom(){ const el = $("waMessages"); el.scrollTop = el.scrollHeight; waStick = true; hideNewPill(); }
+function resetMessagesView(){
+  waMsgs = []; waMsgEls = new Map(); waMsgSig = new Map(); waMsgLimit = 300; waMsgHasMore = false; waStick = true; waAnchor = null;
+  const el = $("waMessages"); if(el) el.innerHTML = `<div class="wa-empty" style="padding:40px 0;"><div class="s">Loading messages…</div></div>`;
+  hideNewPill();
+}
+function renderMessages(msgs){
+  const el = $("waMessages");
+  const nearBottom = msgsNearBottom(el);
+  const prevIds = [...waMsgEls.keys()];
+  const ids = msgs.map(m=>m.id);
+  const canPatch = prevIds.length > 0 && prevIds.length <= ids.length && prevIds.every((id,i)=>id===ids[i]);
+  const firstPaint = prevIds.length === 0;
+  let added = 0;
+
+  if(!canPatch){
+    waMsgEls = new Map(); waMsgSig = new Map();
+    let html = waMsgHasMore ? `<button class="wa-load-earlier" onclick="loadEarlierMessages()">Load earlier messages</button>` : "";
+    let lastDate = null;
+    msgs.forEach((m,i)=>{
+      const ds = msgDate(m).toDateString();
+      if(ds !== lastDate){ html += `<div class="wa-date-sep"><span>${fmtDateSep(msgDate(m))}</span></div>`; lastDate = ds; }
+      html += msgRowHtml(m, i ? msgs[i-1] : null);
+    });
+    el.innerHTML = html || `<div class="wa-empty" style="padding:40px 0;"><div class="s">No messages yet</div></div>`;
+    el.querySelectorAll(".wa-bubble-row").forEach(r=>waMsgEls.set(r.dataset.id, r));
+    msgs.forEach(m=>waMsgSig.set(m.id, msgSignature(m)));
+    added = msgs.length;
+  } else {
+    // 1) edits to messages already on screen (delivery ticks, late-arriving media links…)
+    msgs.forEach((m,i)=>{
+      if(i >= prevIds.length) return;
+      const sig = msgSignature(m);
+      if(waMsgSig.get(m.id) === sig) return;
+      const row = waMsgEls.get(m.id); if(!row) return;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = msgRowHtml(m, i ? msgs[i-1] : null);
+      const fresh = tmp.firstElementChild;
+      row.replaceWith(fresh);
+      waMsgEls.set(m.id, fresh); waMsgSig.set(m.id, sig);
+    });
+    // 2) brand-new messages go on the end
+    for(let i = prevIds.length; i < msgs.length; i++){
+      const m = msgs[i], prev = msgs[i-1];
+      if(!prev || msgDate(prev).toDateString() !== msgDate(m).toDateString()){
+        el.insertAdjacentHTML("beforeend", `<div class="wa-date-sep"><span>${fmtDateSep(msgDate(m))}</span></div>`);
+      }
+      el.insertAdjacentHTML("beforeend", msgRowHtml(m, prev));
+      waMsgEls.set(m.id, el.lastElementChild); waMsgSig.set(m.id, msgSignature(m));
+      added++;
+    }
+  }
+  waMsgs = msgs;
+
+  const last = msgs[msgs.length-1];
+  if(waAnchor){
+    el.scrollTop = el.scrollHeight - waAnchor.fromBottom; waAnchor = null;
+  } else if(firstPaint || nearBottom || (added && last && last.direction === "out")){
+    scrollMsgsToBottom();
+  } else if(added){
+    const p = $("waNewPill"); if(p) p.classList.remove("hidden");
+  }
+}
+function loadEarlierMessages(){
+  if(!waActivePhone) return;
+  const el = $("waMessages");
+  waAnchor = { fromBottom: el.scrollHeight - el.scrollTop };
+  waMsgLimit += 300;
+  attachMessagesListener(waActivePhone);
+}
+function attachMessagesListener(phone){
   if(waMsgUnsub) waMsgUnsub();
-  waMsgUnsub = fbDb.collection("whatsapp_conversations").doc(phone).collection("messages").orderBy("createdAt", "asc")
+  waMsgUnsub = fbDb.collection("whatsapp_conversations").doc(phone).collection("messages")
+    .orderBy("createdAt", "desc").limit(waMsgLimit)
     .onSnapshot(snap=>{
+      if(phone !== waActivePhone) return;
       const msgs = [];
       snap.forEach(doc=> msgs.push({ id: doc.id, ...doc.data() }));
+      msgs.reverse();
+      waMsgHasMore = snap.size >= waMsgLimit;
       renderMessages(msgs);
       // conversation doc may have updated (e.g. windowExpiresAt) — refresh composer state
       const updated = waConversations.find(c=>c.id===phone);
       if(updated) updateComposerState(updated);
-    }, err=>{ console.error("messages listener error", err); });
+    }, err=>{ console.error("messages listener error", err); toast("Couldn't load messages"); });
 }
+// one set of listeners for everything inside the message list (no inline handlers, nothing to re-attach per render)
+(function wireMessageList(){
+  const el = $("waMessages");
+  el.addEventListener("scroll", ()=>{ waStick = msgsNearBottom(el); if(waStick) hideNewPill(); }, { passive:true });
+  el.addEventListener("click", e=>{
+    const img = e.target.closest("[data-lightbox]");
+    if(img){ openLightbox(img.dataset.lightbox); return; }
+    const b = e.target.closest("[data-media-ref]");
+    if(b) openMediaAttachment(b.dataset.mediaRef, b.dataset.mediaType, b);
+  });
+  // media that fails to load turns into a clear message instead of a broken icon
+  el.addEventListener("error", e=>{
+    const t = e.target;
+    if(!t || !/^(IMG|VIDEO|AUDIO)$/.test(t.tagName)) return;
+    const box = t.closest(".wa-media") || t;
+    const label = t.tagName==="VIDEO" ? ["🎥","Video couldn't be loaded"] : t.tagName==="AUDIO" ? ["🎤","Voice note couldn't be loaded"] : ["📷","Photo couldn't be loaded"];
+    box.outerHTML = mediaFallback(label[0], label[1] + " — open WhatsApp to view it");
+  }, true);
+  // images/videos change height when they finish loading — stay pinned to the bottom if we were
+  el.addEventListener("load", ()=>{ if(waStick) el.scrollTop = el.scrollHeight; }, true);
+  el.addEventListener("loadedmetadata", ()=>{ if(waStick) el.scrollTop = el.scrollHeight; }, true);
+})();
 
-function renderMessages(msgs){
-  const el = document.getElementById("waMessages");
-  let html = "";
-  let lastDateStr = null;
-  for(const m of msgs){
-    const d = m.createdAt ? (m.createdAt.toDate ? m.createdAt.toDate() : new Date(m.createdAt)) : new Date();
-    const dateStr = d.toDateString();
-    if(dateStr !== lastDateStr){ html += `<div class="wa-date-sep">${fmtDateSep(d)}</div>`; lastDateStr = dateStr; }
+/* ---------------- lightbox ---------------- */
+function openLightbox(url){
+  const lb = $("waLightbox"); if(!lb) return;
+  lb.querySelector("img").src = url;
+  $("waLightboxOpen").href = url;
+  lb.classList.remove("hidden");
+}
+function closeLightbox(){ const lb = $("waLightbox"); if(lb){ lb.classList.add("hidden"); lb.querySelector("img").removeAttribute("src"); } }
+document.addEventListener("keydown", e=>{ if(e.key === "Escape") closeLightbox(); });
 
-    const isTemplate = m.type === "template";
-    const isAutomation = m.source === "automation";
-    const tick = m.direction==="out" ? statusTick(m.status) : "";
-    let labelLine = "";
-    if(isAutomation) labelLine = `<div style="font-size:10.5px;opacity:.75;margin-bottom:3px;">🤖 Automated · ${escapeHtml(m.templateName||'')}</div>`;
-    else if(isTemplate) labelLine = `<div style="font-size:10.5px;opacity:.75;margin-bottom:3px;">📄 Template: ${escapeHtml(m.templateName||'')}</div>`;
-
-    let mediaHtml = "";
-    if(m.mediaUrl && m.mediaType === "image"){
-      mediaHtml = `<img src="${escapeHtml(m.mediaUrl)}" alt="Photo" style="max-width:240px;max-height:320px;border-radius:10px;display:block;margin-bottom:6px;cursor:zoom-in;object-fit:cover;" onclick="window.open('${escapeHtml(m.mediaUrl)}','_blank')" onerror="this.outerHTML='<div style=&quot;font-size:12px;opacity:.7;margin-bottom:4px;&quot;>📷 Photo (couldn\\'t load — open WhatsApp to view)</div>';">`;
-    } else if(m.mediaUrl && m.mediaType === "video"){
-      mediaHtml = `<video controls style="max-width:260px;max-height:320px;border-radius:10px;display:block;margin-bottom:6px;" src="${escapeHtml(m.mediaUrl)}"></video>`;
-    } else if(m.mediaFileRef && (m.mediaType === "audio" || m.mediaType === "document")){
-      const safeRef = escapeHtml(m.mediaFileRef).replace(/'/g,"\\'");
-      const icon = m.mediaType === "audio" ? "🎤" : "📄";
-      const label = m.mediaType === "audio" ? "Play voice note" : "Open document";
-      mediaHtml = `<button class="wa-media-open-btn" onclick="openMediaAttachment('${safeRef}','${m.mediaType}', this)">${icon} ${label} →</button>`;
-    }
-
-    html += `<div class="wa-bubble-row ${m.direction}">
-      <div class="wa-bubble ${isTemplate||isAutomation?'template':''} ${isAutomation?'automation':''}">
-        ${labelLine}
-        ${mediaHtml}
-        ${escapeHtml(m.text||'')}
-        <div class="wb-meta">${fmtTime(m.createdAt)} ${tick}</div>
-      </div>
-    </div>`;
+/* ---------------- composer ---------------- */
+let waSending = false;
+const waDrafts = {};   // phone → unsent text, so switching conversations never loses what you were typing
+function autosizeReply(){
+  const box = $("waReplyText");
+  box.style.height = "auto";
+  box.style.height = Math.min(box.scrollHeight, 140) + "px";
+  box.style.overflowY = box.scrollHeight > 140 ? "auto" : "hidden";   // no scrollbar until the box is actually full
+}
+function updateSendState(){
+  const box = $("waReplyText"), btn = $("waSendBtn");
+  if(btn) btn.disabled = waSending || !box.value.trim();
+}
+$("waReplyText").addEventListener("input", ()=>{
+  autosizeReply(); updateSendState();
+  if(waActivePhone) waDrafts[waActivePhone] = $("waReplyText").value;
+});
+$("waReplyText").addEventListener("keydown", e=>{
+  if(e.key === "Enter" && !e.shiftKey && !e.isComposing){ e.preventDefault(); sendWaText(); }
+});
+async function sendWaText(){
+  if(!waActivePhone || waSending) return;
+  const box = $("waReplyText");
+  const text = box.value.trim();
+  if(!text) return;
+  const phone = waActivePhone;
+  waSending = true; updateSendState();
+  try{
+    const conv = waConversations.find(c=>c.id===phone);
+    await fbFunctions.httpsCallable("sendWhatsAppReply")({ phone, mode: "text", text, customerName: conv?.customerName });
+    delete waDrafts[phone];
+    if(waActivePhone === phone){ box.value = ""; autosizeReply(); }
+  }catch(e){
+    console.error(e);
+    toast(e.message || "Message failed to send");
   }
-  el.innerHTML = html;
-  el.scrollTop = el.scrollHeight;
+  waSending = false; updateSendState();
+  box.focus();
 }
+
+/* ---------------- small page-level behaviour ---------------- */
+$("menuBtn").addEventListener("click", e=>{ e.stopPropagation(); $("sidebar").classList.toggle("open"); });
+document.addEventListener("click", e=>{
+  const sb = $("sidebar");
+  if(sb.classList.contains("open") && !sb.contains(e.target)) sb.classList.remove("open");
+  if(!e.target.closest(".wa-quick-wrap")){ const q = $("waQuickRepliesMenu"); if(q) q.classList.add("hidden"); }
+});
+$("waConvList").addEventListener("click", e=>{
+  const it = e.target.closest(".wa-conv-item");
+  if(it) openConversation(it.dataset.phone);
+});
+$("waConvList").addEventListener("keydown", e=>{
+  if(e.key !== "Enter" && e.key !== " ") return;
+  const it = e.target.closest(".wa-conv-item");
+  if(it){ e.preventDefault(); openConversation(it.dataset.phone); }
+});
+
 async function openMediaAttachment(fileUrl, mediaType, btnEl){
   const original = btnEl.textContent;
   btnEl.textContent = "Loading…";
@@ -1662,6 +1991,12 @@ async function openMediaAttachment(fileUrl, mediaType, btnEl){
       audio.style.display = "block";
       audio.style.marginTop = "6px";
       btnEl.replaceWith(audio);
+    } else if(mediaType === "video"){
+      const video = document.createElement("video");
+      video.controls = true; video.autoplay = true; video.muted = true; video.loop = true; video.playsInline = true;
+      video.src = res.data.url;
+      const box = document.createElement("div"); box.className = "wa-media"; box.appendChild(video);
+      btnEl.replaceWith(box);
     } else {
       window.open(res.data.url, "_blank");
       btnEl.textContent = original;
@@ -1718,27 +2053,6 @@ function renderTemplateVarInputs(){
     + (vars.length || couponIdx !== null ? '' : '<p class="hint" style="margin:0;">This template only needs {{customer_name}}, which is filled in automatically.</p>');
 }
 
-async function sendWaText(){
-  if(!waActivePhone) return;
-  const box = document.getElementById("waReplyText");
-  const text = box.value.trim();
-  if(!text) return;
-  const btn = document.getElementById("waSendBtn");
-  btn.disabled = true;
-  try{
-    const conv = waConversations.find(c=>c.id===waActivePhone);
-    await fbFunctions.httpsCallable("sendWhatsAppReply")({ phone: waActivePhone, mode: "text", text, customerName: conv?.customerName });
-    box.value = "";
-  }catch(e){
-    console.error(e);
-    toast(e.message || "Message failed to send");
-  }
-  btn.disabled = false;
-  box.focus();
-}
-document.getElementById("waReplyText").addEventListener("keydown", e=>{
-  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendWaText(); }
-});
 
 async function sendWaTemplate(){
   const name = document.getElementById("waTemplatePicker").value;
@@ -1803,6 +2117,7 @@ async function deleteConversation(){
     document.getElementById("waThreadEmpty").classList.remove("hidden");
     document.getElementById("waCustomerPanel").classList.add("hidden");
     document.getElementById("waCustomerEmpty").classList.remove("hidden");
+    resetMessagesView(); setWaView("list"); waConvHtml = ""; renderConvList();
   }catch(e){
     console.error(e);
     toast("Couldn't delete conversation: " + (e.message||""));
@@ -1903,6 +2218,7 @@ function insertQuickReply(id){
   const conv = waConversations.find(c=>c.id===waActivePhone);
   const box = document.getElementById("waReplyText");
   box.value = substituteVars(q.body, conv);
+  box.dispatchEvent(new Event("input"));   // resize the box, enable Send and keep the draft
   box.focus();
   document.getElementById("waQuickRepliesMenu").classList.add("hidden");
 }
@@ -1974,6 +2290,7 @@ function checkForNewMessageNotifications(){
     });
   }
   lastKnownTotalUnread = total;
+  document.title = (total ? "(" + (total>99?"99+":total) + ") " : "") + "PLS HQ — WhatsApp";
 }
 
 /* ---------------- boot ---------------- */
@@ -1984,6 +2301,7 @@ function renderAll(){
   else { renderConvList(); if(!document.getElementById("waQuickRepliesMenu").classList.contains("hidden")) renderQuickRepliesMenu(); }
   if(waContactsLoaded) renderContactsList();
   document.getElementById("setupBanner").style.display = firebaseConfigured() ? "none" : "block";
+  fitWaShell();
 }
 loadOps();
 
