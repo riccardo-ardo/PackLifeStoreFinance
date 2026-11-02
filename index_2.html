@@ -822,6 +822,9 @@ function applyCostListToOrder(o, force){
 function ordersForMonth(m){ return DB.orders.filter(o=>o.month===m); }
 function txForMonth(m){ return DB.transactions.filter(t=>monthOf(t.date)===m); }
 function ticketsForMonth(m){ return DB.ticketSales.filter(t=>monthOf(t.date)===m); }
+// What Chris keeps from a ticket: what the buyer paid, less Wix's service fee, less the card / Payflex processing fee
+// (yocoFees is the original field name for that processing fee; older tickets simply have no wixFee).
+const ticketNet = t => (Number(t.costToClient)||0) - (Number(t.wixFee)||0) - (Number(t.yocoFees)||0);
 
 function monthFigures(m){
   const ords = ordersForMonth(m);
@@ -849,7 +852,7 @@ function monthFigures(m){
     split[p] = distributable * pct;
   });
   // Ticket sales (Pack Life Gym events) remain Chris's own separate income — not part of the PLS profit split.
-  const ticketProfit = ticketsForMonth(m).reduce((s,t)=>s+((Number(t.costToClient)||0)-(Number(t.yocoFees)||0)),0);
+  const ticketProfit = ticketsForMonth(m).reduce((s,t)=>s+ticketNet(t),0);
   const margin = revenue? netProfit/revenue : 0;
   return {revenue,cogs,grossProfit,totalExpenses,byCategory,netProfit,vatTotal,vatBySupplier,vatOrders,profitAfterVat,adReserve,distributable,ticketProfit,split,margin};
 }
@@ -2525,23 +2528,30 @@ function renderDistribution(){
     </div>
     <p class="hint" style="margin-top:8px;">Chris's column is money still owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round${vatOn()? ", and includes the VAT shown in the VAT column":""}. Full detail on Payments & Settlement.</p>
 
-    <div class="section-head"><h2>Gym ticket sales — Chris's own income</h2><span class="hint">Pack Life Gym SOMA Inner Balance passes — not part of the PLS profit split</span></div>
+    <div class="section-head"><h2>Gym ticket sales — Chris's own income</h2><span class="hint">Event &amp; gym passes (SOMA, ERG Ultra…) — not part of the PLS profit split. Chris keeps what's paid, less Wix's fee and the Yoco / Payflex fee.</span></div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
       <button class="btn btn-primary btn-sm" onclick="openTicketForm()">+ Add ticket sale</button>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Inv No</th><th>Date</th><th class="num">Cost to Client</th><th class="num">Yoco Fees</th><th class="num">Profit to Chris</th><th></th></tr></thead>
+        <thead><tr><th>Inv No</th><th>Date</th><th>Paid via</th><th class="num">Paid by buyer</th><th class="num">Wix fee</th><th class="num">Yoco / Payflex fee</th><th class="num">Profit to Chris</th><th></th></tr></thead>
         <tbody>
           ${DB.ticketSales.length? DB.ticketSales.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map(t=>`
             <tr>
               <td>${esc(t.invNo)}</td>
               <td>${t.date? new Date(t.date).toLocaleDateString('en-ZA'):"—"}</td>
+              <td>${t.payMethod? `<span class="tag ${t.payMethod==='Payflex'?'needs':''}">${esc(t.payMethod)}</span>` : "—"}</td>
               <td class="num">${R(t.costToClient)}</td>
+              <td class="num">${R(t.wixFee)}</td>
               <td class="num">${R(t.yocoFees)}</td>
-              <td class="num">${R((t.costToClient||0)-(t.yocoFees||0))}</td>
-              <td class="row-actions"><button class="icon-btn" onclick="deleteRow('ticketSales','${t.id}')">✕</button></td>
-            </tr>`).join("") : `<tr><td colspan="6"><div class="empty-state">No ticket sales logged yet</div></td></tr>`}
+              <td class="num">${R(ticketNet(t))}</td>
+              <td class="row-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openTicketForm('${t.id}')">Edit</button>
+                <button class="icon-btn" onclick="deleteRow('ticketSales','${t.id}')">✕</button>
+              </td>
+            </tr>`).join("")
+            + `<tr class="total-row"><td colspan="3">TOTAL</td><td class="num">${R(DB.ticketSales.reduce((a,t)=>a+(+t.costToClient||0),0))}</td><td class="num">${R(DB.ticketSales.reduce((a,t)=>a+(+t.wixFee||0),0))}</td><td class="num">${R(DB.ticketSales.reduce((a,t)=>a+(+t.yocoFees||0),0))}</td><td class="num">${R(DB.ticketSales.reduce((a,t)=>a+ticketNet(t),0))}</td><td></td></tr>`
+            : `<tr><td colspan="8"><div class="empty-state">No ticket sales logged yet</div></td></tr>`}
         </tbody>
       </table>
     </div>
@@ -3400,25 +3410,47 @@ function submitTxForm(editId){
   closeModal(); saveDB(true); render();
 }
 
-function openTicketForm(){
+function openTicketForm(editId){
+  const t = editId? DB.ticketSales.find(x=>x.id===editId) : null;
   openModal(`
-    <h3>Add ticket sale</h3><p class="sub">Pack Life Gym SOMA pass — profit flows to Chris on top of the equal split.</p>
+    <h3>${t? "Edit ticket sale":"Add ticket sale"}</h3><p class="sub">Chris's own income — event &amp; gym passes. Profit to Chris = what the buyer paid, less Wix's service fee, less the Yoco / Payflex fee.</p>
     <div class="field-row">
-      <div class="field"><label>Invoice no.</label><input id="f_inv"></div>
-      <div class="field"><label>Date</label><input id="f_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="field"><label>Invoice / order no.</label><input id="f_inv" value="${esc(t?.invNo||'')}"></div>
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${t?.date && !isNaN(new Date(t.date))? new Date(t.date).toISOString().slice(0,10) : new Date().toISOString().slice(0,10)}"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Cost to client (R)</label><input id="f_costC" type="number" step="0.01"></div>
-      <div class="field"><label>Yoco fees (R)</label><input id="f_fees" type="number" step="0.01"></div>
+      <div class="field"><label>Paid via</label>
+        <select id="f_tpay">
+          ${["Yoco","Payflex","EFT","Other"].map(p=>`<option ${t?.payMethod===p?"selected":""}>${p}</option>`).join("")}
+          <option value="" ${t && !t.payMethod?"selected":""}>Not set</option>
+        </select>
+      </div>
+      <div class="field"><label>Paid by buyer (R)</label><input id="f_costC" type="number" step="0.01" value="${t?.costToClient??''}" oninput="updateTicketProfitHint()"></div>
     </div>
+    <div class="field-row">
+      <div class="field"><label>Wix service fee (R)</label><input id="f_wixfee" type="number" step="0.01" value="${t?.wixFee??''}" oninput="updateTicketProfitHint()"></div>
+      <div class="field"><label>Yoco / Payflex fee (R)</label><input id="f_fees" type="number" step="0.01" value="${t?.yocoFees??''}" oninput="updateTicketProfitHint()"></div>
+    </div>
+    <p class="hint" id="ticketProfitHint" style="margin:0 0 12px;"></p>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitTicketForm()">Save</button>
+      <button class="btn btn-primary" onclick="submitTicketForm(${t? `'${t.id}'` : 'null'})">${t? "Save changes":"Save"}</button>
     </div>
   `);
+  updateTicketProfitHint();
 }
-function submitTicketForm(){
-  DB.ticketSales.push({id:uid(), invNo:val('f_inv'), date:val('f_date'), costToClient:parseFloat(val('f_costC'))||0, yocoFees:parseFloat(val('f_fees'))||0, addedBy:currentUser||"Unknown"});
+function updateTicketProfitHint(){
+  const el = document.getElementById("ticketProfitHint"); if(!el) return;
+  const net = (parseFloat(val('f_costC'))||0) - (parseFloat(val('f_wixfee'))||0) - (parseFloat(val('f_fees'))||0);
+  el.innerHTML = `Profit to Chris: <b>${R(net)}</b>`;
+}
+function submitTicketForm(editId){
+  const fields = { invNo:val('f_inv'), date:val('f_date'), payMethod:val('f_tpay'), costToClient:parseFloat(val('f_costC'))||0,
+                   wixFee:parseFloat(val('f_wixfee'))||0, yocoFees:parseFloat(val('f_fees'))||0 };
+  if(!fields.date){ toast("Pick a date"); return; }
+  const existing = editId? DB.ticketSales.find(x=>x.id===editId) : null;
+  if(existing) Object.assign(existing, fields);
+  else DB.ticketSales.push({ id:uid(), ...fields, addedBy:currentUser||"Unknown" });
   closeModal(); saveDB(true); render();
 }
 
