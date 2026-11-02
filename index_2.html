@@ -870,8 +870,13 @@ function settlementForMonth(m){
   // If Payflex fell short of what he paid suppliers, the business sends him the shortfall.
   // VAT on ex-VAT supplier costs is owed to Chris on top of the supplier/Payflex gap, whoever fronts the suppliers.
   const vatToChris = f.vatTotal;
-  const transferToChris = -payflexNet + vatToChris;
-  return { payflexIn, centralIn, supplierOwedToChris, payflexNet, vatToChris, transferToChris, ...f };
+  // Gym / event tickets are Chris's own income. Payflex pays him directly, so those add nothing to what we send him;
+  // every other method (Yoco, EFT, not set…) lands in the PLS account, so what he keeps from those is owed to him.
+  const tix = ticketsForMonth(m);
+  const ticketsToChris = round2(tix.filter(t=>t.payMethod!=="Payflex").reduce((a,t)=>a+ticketNet(t),0));
+  const ticketsPaidDirect = round2(tix.filter(t=>t.payMethod==="Payflex").reduce((a,t)=>a+ticketNet(t),0));
+  const transferToChris = -payflexNet + vatToChris + ticketsToChris;
+  return { payflexIn, centralIn, supplierOwedToChris, payflexNet, vatToChris, ticketsToChris, ticketsPaidDirect, ticketCount:tix.length, transferToChris, ...f };
 }
 function yearFigures(){
   const totals = {revenue:0,cogs:0,grossProfit:0,totalExpenses:0,netProfit:0,vatTotal:0,profitAfterVat:0,vatBySupplier:{},adReserve:0,distributable:0,ticketProfit:0,chrisSettlement:0,split:{},byCategory:{}};
@@ -2105,6 +2110,7 @@ function exportChrisStatementPDF(month){
       <tr><td>Payflex cash Chris is holding</td><td style="text-align:right;">${R(s.payflexIn)}</td></tr>
       <tr><td>Less: supplier payments Chris needs to make</td><td style="text-align:right;">- ${R(s.supplierOwedToChris)}</td></tr>
       <tr><td>Plus: VAT on supplier costs quoted without VAT</td><td style="text-align:right;">+ ${R(s.vatToChris)}</td></tr>
+      ${s.ticketCount? `<tr><td>Plus: gym ticket income PLS collected for Chris (Payflex tickets excluded — paid to him directly)</td><td style="text-align:right;">+ ${R(s.ticketsToChris)}</td></tr>`:""}
     </table>
     ${owesLine}
 
@@ -2141,6 +2147,8 @@ function exportChrisStatementCSV(month){
   csv += `Payflex cash held,${s.payflexIn.toFixed(2)}\n`;
   csv += `Less supplier payments owed,-${s.supplierOwedToChris.toFixed(2)}\n`;
   csv += `Plus VAT on supplier costs,${s.vatToChris.toFixed(2)}\n`;
+  csv += `Plus gym ticket income collected for Chris (not Payflex),${s.ticketsToChris.toFixed(2)}\n`;
+  csv += `Payflex tickets paid to Chris directly (not included),${s.ticketsPaidDirect.toFixed(2)}\n`;
   csv += `${s.transferToChris<0? "Chris owes the business" : "Business owes Chris"},${Math.abs(s.transferToChris).toFixed(2)}\n\n`;
   csv += `Order detail\nDate,Order No,Supplier,Product,Paid via,Client Paid,Supplier Cost,VAT Setting,VAT\n`;
   ords.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(o=>{
@@ -2391,8 +2399,10 @@ function renderSettlement(){
         <span style="font-weight:700;">${s.payflexNet>=0? "Surplus Chris is left holding" : "Shortfall — send Chris extra to cover the suppliers"}</span>
         <b style="font-family:var(--font-mono);font-size:16px;color:${s.payflexNet>=0?'var(--green)':'var(--red)'}">${R(Math.abs(s.payflexNet))}</b>
       </div>
-      ${vatOn()? `
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border-soft);margin-top:10px;"><span>Plus: VAT on supplier costs quoted without VAT</span><b style="font-family:var(--font-mono)">+ ${R(s.vatToChris)}</b></div>
+      ${(vatOn() || s.ticketCount)? `
+      ${vatOn()? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border-soft);margin-top:10px;"><span>Plus: VAT on supplier costs quoted without VAT</span><b style="font-family:var(--font-mono)">+ ${R(s.vatToChris)}</b></div>`:""}
+      ${s.ticketCount? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border-soft);${vatOn()?"":"margin-top:10px;"}"><span>Plus: gym ticket income PLS collected for Chris (not Payflex)</span><b style="font-family:var(--font-mono)">+ ${R(s.ticketsToChris)}</b></div>
+      ${s.ticketsPaidDirect? `<div style="display:flex;justify-content:space-between;padding:4px 0 8px;color:var(--text-secondary);font-size:12px;"><span>Payflex tickets — paid to Chris directly, not included</span><span style="font-family:var(--font-mono)">${R(s.ticketsPaidDirect)}</span></div>`:""}`:""}
       <div style="display:flex;justify-content:space-between;padding:10px 0 0;border-top:1px solid var(--border);">
         <span style="font-weight:700;">${s.transferToChris<0? "Total Chris owes the business" : "Total to send Chris"}</span>
         <b style="font-family:var(--font-mono);font-size:16px;color:${s.transferToChris<0?'var(--red)':'var(--text)'}">${R(Math.abs(s.transferToChris))}</b>
@@ -2415,7 +2425,7 @@ function renderSettlement(){
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border-soft);">
         <div><b>${s.transferToChris<0? "Chris owes the business" : "Send Chris"}</b>
-          <div class="hint" style="font-size:12px;">Not a profit share — covering the supplier/Payflex gap this month ${DB.meta.chrisFrontsSuppliers?`(suppliers owed: ${R(s.supplierOwedToChris)}, Payflex held: ${R(s.payflexIn)})`:""}${vatOn()? ` plus ${R(s.vatToChris)} VAT on supplier costs`:""}</div>
+          <div class="hint" style="font-size:12px;">Not a profit share — covering the supplier/Payflex gap this month ${DB.meta.chrisFrontsSuppliers?`(suppliers owed: ${R(s.supplierOwedToChris)}, Payflex held: ${R(s.payflexIn)})`:""}${vatOn()? ` plus ${R(s.vatToChris)} VAT on supplier costs`:""}${s.ticketCount? ` plus ${R(s.ticketsToChris)} gym ticket income`:""}</div>
         </div>
         <b style="font-family:var(--font-mono);font-size:16px;color:${s.transferToChris<0?'var(--red)':'var(--text)'}">${s.transferToChris<0? `owes ${R(Math.abs(s.transferToChris))}` : R(s.transferToChris)}</b>
       </div>
@@ -2528,7 +2538,7 @@ function renderDistribution(){
     </div>
     <p class="hint" style="margin-top:8px;">Chris's column is money still owed to/from him for supplier payments and Payflex, not profit — a bracketed amount means he owes the business, not the other way round${vatOn()? ", and includes the VAT shown in the VAT column":""}. Full detail on Payments & Settlement.</p>
 
-    <div class="section-head"><h2>Gym ticket sales — Chris's own income</h2><span class="hint">Event &amp; gym passes (SOMA, ERG Ultra…) — not part of the PLS profit split. Chris keeps what's paid, less Wix's fee and the Yoco / Payflex fee.</span></div>
+    <div class="section-head"><h2>Gym ticket sales — Chris's own income</h2><span class="hint">Event &amp; gym passes (SOMA, ERG Ultra…) — not part of the PLS profit split. Chris keeps what's paid, less Wix's fee and the Yoco / Payflex fee. Payflex payments go to Chris directly; the rest PLS collects and pays on to him (added to Payments & Settlement).</span></div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
       <button class="btn btn-primary btn-sm" onclick="openTicketForm()">+ Add ticket sale</button>
     </div>
