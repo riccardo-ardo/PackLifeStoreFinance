@@ -474,6 +474,7 @@ let storageReady = false;      // true once the first copy of the data has arriv
 let remoteMissing = false;     // Firestore has no finance document yet (first run, before the JSONBin copy)
 let lastRemoteStamp = null;    // meta.updatedAt of the version we last saw in Firestore — saves refuse to overwrite anything newer
 let firstSnapshotResolve = null;
+const ownStamps = new Set();    // meta.updatedAt values this screen has written — their echoes from Firestore are not "new" data
 const financeRef = ()=> fbDb.collection(FINANCE_DOC.collection).doc(FINANCE_DOC.doc);
 
 // Resolves once the first load attempt is done (data loaded, signed out, or not available) so the page can draw.
@@ -530,7 +531,7 @@ function attachFinanceListener(){
     remoteMissing = false;
     const incoming = normalizeDB(snap.data());
     const stamp = incoming.meta.updatedAt || null;
-    if(!firstLoad && (stamp===lastRemoteStamp || (DB && DB.meta && stamp===DB.meta.updatedAt))) return;   // nothing new, or our own save
+    if(!firstLoad && (stamp===lastRemoteStamp || ownStamps.has(stamp) || (DB && DB.meta && stamp===DB.meta.updatedAt))) return;   // nothing new, or our own save
     DB = incoming; lastRemoteStamp = stamp; storageReady = true;
     migrateChrisOwnershipChange();
     syncState = "ok"; updateSyncBox();
@@ -577,6 +578,7 @@ async function doSaveDB(showToast, attempt){
   syncState = attempt>0? "retrying" : "saving";
   updateSyncBox();
   const stamp = DB.meta.updatedAt;
+  ownStamps.add(stamp);
   try{
     const payload = JSON.parse(JSON.stringify(DB));   // drops undefined values, which Firestore rejects
     const size = JSON.stringify(payload).length;
@@ -3322,8 +3324,9 @@ function submitOrderForm(editId){
     costToClient:parseFloat(val('f_costC'))||0, costSupplier:parseFloat(val('f_costS'))||0
   };
   let vat = val('f_costVat');
-  if(!fields.costSupplier){
-    // nothing typed: last chance to pull the cost from the supplier cost list
+  if(!editId && val('f_costS').trim()===""){
+    // new order, supplier cost box left empty: last chance to pull the cost from the supplier cost list.
+    // (Never on an edit, and never when a 0 was typed — 0 is a real amount.)
     const tmp = {sku:fields.sku, product:fields.product, qty:fields.qty, costSupplier:0, supplier:fields.supplier};
     if(applyCostListToOrder(tmp)){
       fields.costSupplier = tmp.costSupplier;
