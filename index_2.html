@@ -3180,7 +3180,7 @@ function applyDataPatch(file){
   reader.onload = e=>{
     try{
       const patch = JSON.parse(e.target.result);
-      if(patch.kind!=="pls-finance-patch" || !Array.isArray(patch.add||[]) || !Array.isArray(patch.update||[]) || !Array.isArray(patch.addTransactions||[]) || !Array.isArray(patch.addTicketSales||[]) || !Array.isArray(patch.updateTicketSales||[])) throw new Error("not a PLS HQ correction file");
+      if(patch.kind!=="pls-finance-patch" || !Array.isArray(patch.add||[]) || !Array.isArray(patch.update||[]) || !Array.isArray(patch.addTransactions||[]) || !Array.isArray(patch.addTicketSales||[]) || !Array.isArray(patch.updateTicketSales||[]) || !Array.isArray(patch.updateTransactions||[])) throw new Error("not a PLS HQ correction file");
       if(!storageReady || (remoteMissing && jsonbinConfigured())){ toast("Wait until the data has loaded (and been copied across) first"); return; }
       const same = (a,b)=> ((a==null||a==="")? (b==null||b===""||b===0) : String(a)===String(b)) || (Number(a)===Number(b) && a!=="" && b!=="" && a!=null && b!=null);
       const have = new Set(DB.orders.map(o=>o.id));
@@ -3206,6 +3206,14 @@ function applyDataPatch(file){
         const fit = list.find(u=>Object.entries(u.expect||{}).every(([k,v])=>same(t[k], v)));
         if(fit) tkUps.push({t, u:fit}); else tkChanged++;
       });
+      // corrections to transactions that already exist (found by id, or by the date + description it had when the file was made)
+      const txUps = []; let txChanged = 0, txMissing = 0;
+      (patch.updateTransactions||[]).forEach(u=>{
+        const x = DB.transactions.find(y=>y.id===u.id) || (u.match? DB.transactions.find(y=>Object.entries(u.match).every(([k,v])=>same(y[k], v))) : null);
+        if(!x){ txMissing++; return; }
+        if(Object.entries(u.set||{}).every(([k,v])=>same(x[k], v))) return;
+        if(Object.entries(u.expect||{}).every(([k,v])=>same(x[k], v))) txUps.push({x,u}); else txChanged++;
+      });
       const ups = []; let changedSince = 0, missing = 0;
       (patch.update||[]).forEach(u=>{
         const o = DB.orders.find(x=>x.id===u.id);
@@ -3216,22 +3224,23 @@ function applyDataPatch(file){
         if(!ok){ changedSince++; return; }
         ups.push({o,u});
       });
-      if(!adds.length && !ups.length && !txAdds.length && !tkAdds.length && !tkUps.length){ toast("Nothing to do — this file has already been applied"+(changedSince+tkChanged? ` (${changedSince+tkChanged} lines were changed since and left alone)`:"")); return; }
-      const msg = `${patch.description? patch.description+"\n\n" : ""}This will add ${adds.length} order line${adds.length===1?"":"s"}, correct ${ups.length} existing order line${ups.length===1?"":"s"}, add ${txAdds.length} transaction${txAdds.length===1?"":"s"}, add ${tkAdds.length} ticket sale${tkAdds.length===1?"":"s"} and correct ${tkUps.length} existing ticket sale${tkUps.length===1?"":"s"}.`
+      if(!adds.length && !ups.length && !txAdds.length && !tkAdds.length && !tkUps.length && !txUps.length){ toast("Nothing to do — this file has already been applied"+(changedSince+tkChanged+txChanged? ` (${changedSince+tkChanged+txChanged} lines were changed since and left alone)`:"")); return; }
+      const msg = `${patch.description? patch.description+"\n\n" : ""}This will add ${adds.length} order line${adds.length===1?"":"s"}, correct ${ups.length} existing order line${ups.length===1?"":"s"}, add ${txAdds.length} transaction${txAdds.length===1?"":"s"}, add ${tkAdds.length} ticket sale${tkAdds.length===1?"":"s"}, correct ${tkUps.length} existing ticket sale${tkUps.length===1?"":"s"} and correct ${txUps.length} existing transaction${txUps.length===1?"":"s"}.`
         + (alreadyThere? `\n${alreadyThere} line(s) are already there and will be skipped.` : "")
         + (txAlready? `\n${txAlready} transaction(s) are already there and will be skipped.` : "")
         + (tkAlready? `\n${tkAlready} ticket sale(s) are already there and will be skipped.` : "")
-        + (changedSince+tkChanged? `\n${changedSince+tkChanged} line(s) were edited since this file was made and will be left alone.` : "")
-        + (missing+tkMissing? `\n${missing+tkMissing} line(s) no longer exist and will be skipped.` : "")
+        + (changedSince+tkChanged+txChanged? `\n${changedSince+tkChanged+txChanged} line(s) were edited since this file was made and will be left alone.` : "")
+        + (missing+tkMissing+txMissing? `\n${missing+tkMissing+txMissing} line(s) no longer exist and will be skipped.` : "")
         + `\n\nNothing is deleted. Continue?`;
       if(!confirm(msg)) return;
       adds.forEach(o=>DB.orders.push(o));
       txAdds.forEach(t=>DB.transactions.push(t));
       tkAdds.forEach(t=>DB.ticketSales.push(t));
+      txUps.forEach(({x,u})=>{ Object.entries(u.set||{}).forEach(([k,v])=>{ x[k] = v; }); });
       tkUps.forEach(({t,u})=>{ Object.entries(u.set||{}).forEach(([k,v])=>{ t[k] = v; }); });
       ups.forEach(({o,u})=>{ Object.entries(u.set||{}).forEach(([k,v])=>{ o[k] = v; }); (u.unset||[]).forEach(k=>{ delete o[k]; }); });
       saveDB(true); render();
-      toast(`Added ${adds.length} order line${adds.length===1?"":"s"}, corrected ${ups.length}, added ${txAdds.length} transaction${txAdds.length===1?"":"s"}, added ${tkAdds.length} ticket sale${tkAdds.length===1?"":"s"}, corrected ${tkUps.length}`);
+      toast(`Added ${adds.length} order line${adds.length===1?"":"s"}, corrected ${ups.length}, added ${txAdds.length} transaction${txAdds.length===1?"":"s"}, added ${tkAdds.length} ticket sale${tkAdds.length===1?"":"s"}, corrected ${tkUps.length} ticket sale${tkUps.length===1?"":"s"}, corrected ${txUps.length} transaction${txUps.length===1?"":"s"}`);
     }catch(err){
       console.error(err);
       toast("Couldn't read that file — "+(err.message||err));
